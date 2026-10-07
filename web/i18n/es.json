@@ -15,7 +15,9 @@
     "scale": "Tiempo máximo: {minutes} min",
     "isochrones": "Isócronas",
     "search": "Buscar una dirección o un lugar",
-    "searchPlaceholder": "Dirección o lugar"
+    "searchPlaceholder": "Dirección o lugar",
+    "noResults": "No se han encontrado resultados en la zona cubierta.",
+    "resultsOutside": "Se han ocultado {count} resultados fuera de la zona cubierta."
   },
   "modes": {
     "walk": "A pie",
@@ -59,6 +61,8 @@
     "outsideCity": "Tu posición está fuera de la zona cubierta. La salida no ha cambiado.",
     "geocoder": "La búsqueda no está disponible ahora. Puedes seguir eligiendo el punto en el mapa.",
     "shareFailed": "No se ha podido copiar el enlace.",
-    "dataLoad": "No se han podido cargar los datos del mapa. Inténtalo de nuevo más tarde."
+    "dataLoad": "No se han podido cargar los datos del mapa. Inténtalo de nuevo más tarde.",
+    "geocoderRateLimit": "Demasiadas búsquedas seguidas. Espera un momento o elige el punto en el mapa.",
+    "geocoderTimeout": "La búsqueda ha tardado demasiado. Puedes seguir eligiendo el punto en el mapa."
   }
 }
