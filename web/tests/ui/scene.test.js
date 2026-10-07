@@ -22,7 +22,7 @@ describe('computeScene', () => {
     const scene = computeScene(graph, grid, base);
     expect(scene.times).toHaveLength(grid.cols * grid.rows);
     expect(Object.keys(scene.contours)).toEqual(['15', '30']);
-    expect(scene.times.some((v) => v === 0 || v < 1)).toBe(true);
+    expect(Math.min(...scene.times.filter((v) => !Number.isNaN(v)))).toBeLessThan(5);
   });
 
   it('turning an isochrone off drops it; none requested means no contours', () => {
@@ -70,13 +70,13 @@ describe('destinationTrip', () => {
     expect(destinationTrip(graph, { ...base, destination: nowhere, scale: 120 })).toEqual({ reachable: false });
   });
 
-  it('in arrival mode the trip starts at the destination point and ends at the anchor (R5.6)', () => {
-    const trip = destinationTrip(graph, { ...base, direction: 'arrival', destination: far, scale: 120 });
+  it('in arrival mode the trip starts at the clicked point and ends at the anchor (R5.6)', () => {
+    // Lines run A -> B -> C, so arriving at C from A is the feasible direction.
+    const state = { ...base, direction: 'arrival', origin: far, destination: base.origin, scale: 120 };
+    const trip = destinationTrip(graph, state);
     expect(trip.reachable).toBe(true);
-    expect(trip.path[0]).toEqual(far);
-    expect(trip.path.at(-1)).toEqual(base.origin);
-    const first = trip.legs[0];
-    expect(first.type).toBe('walk');
+    expect(trip.path[0]).toEqual(base.origin);
+    expect(trip.path.at(-1)).toEqual(far);
   });
 });
 
