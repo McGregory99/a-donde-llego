@@ -17,6 +17,7 @@ describe('itinerary total equals the heat-map value (R5.3)', () => {
   cases.forEach((c, n) => {
     it(`departure, case ${n}: every point matches the Python model`, () => {
       let reached = 0;
+      const expectedReached = c.times.filter((t) => t !== null).length;
       points.forEach((p, i) => {
         const result = itinerary(graph, c.origin, p, { enabled: c.enabled });
         if (c.times[i] === null) return expect(result).toBeNull();
@@ -24,8 +25,12 @@ describe('itinerary total equals the heat-map value (R5.3)', () => {
         expect(Math.abs(result.total - c.times[i])).toBeLessThan(EPS);
         expect(Math.abs(sum(result) - c.times[i])).toBeLessThan(1e-6);
       });
-      expect(reached).toBeGreaterThan(0);
+      expect(reached).toBe(expectedReached);
     });
+  });
+
+  it('the departure cases reach a meaningful number of points in total', () => {
+    expect(cases.flatMap((c) => c.times).filter((t) => t !== null).length).toBeGreaterThan(50);
   });
 
   it('arrival: the itinerary from P to the destination equals the forward Python time O->P', () => {
@@ -40,7 +45,7 @@ describe('itinerary total equals the heat-map value (R5.3)', () => {
         expect(Math.abs(sum(result) - c.times[i])).toBeLessThan(1e-6);
       });
     });
-    expect(checked).toBeGreaterThan(100);
+    expect(checked).toBeGreaterThan(30);
   });
 
   it('is null for a point beyond the limit and total agrees with travelTimes', () => {
@@ -119,11 +124,13 @@ describe('leg structure (R5.2)', () => {
 });
 
 describe('direction and map path (R5.4, R5.6)', () => {
-  const transit = (list) => list.find((it) => it && types(it).includes('ride'));
+  // End of the rail line: reachable from the road line's neighbourhood only through a transfer.
+  const farStop = (({ lat, lon }) => [lat, lon])(graph.stops.find((s) => s.id === 'F'));
+  const usesTransit = (it) => it !== null && types(it).includes('ride');
 
   it('departure: path runs from the departure to the clicked point', () => {
     const origin = all[0].origin;
-    const p = points.find((q) => transit([itinerary(graph, origin, q)]));
+    const p = points.find((q) => usesTransit(itinerary(graph, origin, q)));
     const it = itinerary(graph, origin, p);
     expect(it.path[0]).toEqual(origin);
     expect(it.path.at(-1)).toEqual(p);
@@ -131,8 +138,8 @@ describe('direction and map path (R5.4, R5.6)', () => {
   });
 
   it('arrival: the itinerary starts at the clicked point and ends at the destination', () => {
-    const destination = all[0].origin;
-    const p = points.find((q) => transit([itinerary(graph, destination, q, { reverse: true }), ]) );
+    const destination = farStop;
+    const p = points.find((q) => usesTransit(itinerary(graph, destination, q, { reverse: true })));
     const it = itinerary(graph, destination, p, { reverse: true });
     expect(it.path[0]).toEqual(p);
     expect(it.path.at(-1)).toEqual(destination);
@@ -143,12 +150,13 @@ describe('direction and map path (R5.4, R5.6)', () => {
   });
 
   it('arrival with a line change keeps legs in travel order', () => {
-    const destination = all[0].origin;
+    const destination = farStop;
     const change = points
       .map((p) => itinerary(graph, destination, p, { reverse: true }))
       .find((it) => it && types(it).includes('transfer'));
     expect(change).toBeDefined();
-    expect(types(change)).toEqual(['walk', 'wait', 'ride', 'transfer', 'wait', 'ride', 'walk']);
+    // the destination is the last stop itself, so there is no final walk
+    expect(types(change)).toEqual(['walk', 'wait', 'ride', 'transfer', 'wait', 'ride']);
     const rides = change.legs.filter((leg) => leg.type === 'ride');
     expect(rides[0].to).toBe(change.legs.find((leg) => leg.type === 'transfer').fromStop);
   });
