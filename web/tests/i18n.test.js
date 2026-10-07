@@ -133,6 +133,16 @@ describe('i18n itinerary legs', () => {
   });
 
   it('tolerates a missing stop or line name', () => {
-    expect(text({ type: 'wait', minutes: 1, stop: 2, line: 1 })).not.toMatch(/undefined|\{/);
+    const bare = { stops: [{}], lines: [{}] };
+    const bareText = (leg) => describeLeg(t, bare, leg);
+    expect(bareText({ type: 'wait', minutes: 1, stop: 0, line: 0 })).toBe(t('legs.wait', { minutes: 1, stop: '0', line: '0' }));
+    // indices with no entry at all
+    expect(text({ type: 'wait', minutes: 1, stop: 9, line: 9 })).toBe(t('legs.wait', { minutes: 1, stop: '9', line: '9' }));
+    expect(text({ type: 'ride', minutes: 2, line: 9, from: 8, to: 9, stops: [8, 9] })).toBe(
+      t('legs.ride.plain', { minutes: 2, line: '9', from: '8', to: '9' }),
+    );
+    for (const out of [bareText({ type: 'wait', minutes: 1, stop: 0, line: 0 }), text({ type: 'wait', minutes: 1, stop: 9, line: 9 })]) {
+      expect(out).not.toMatch(/undefined|\{/);
+    }
   });
 });
