@@ -46,6 +46,7 @@ class Graph:
     walk: dict
     modes: dict[str, dict]
     neighbors: dict[int, list[tuple[int, float]]] = field(default_factory=dict)
+    headways: dict[tuple[int, int], float] = field(default_factory=dict)  # (stop, line) -> minutes
 
 
 def wait_minutes(headway_min: float, params: dict) -> float:
@@ -194,6 +195,11 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
         for (line, sid), count in sorted(departures.items())
     }
 
+    headways = {
+        (stop_index[sid], line_index[line]): round(window_min / count, 2)
+        for (line, sid), count in sorted(departures.items())
+    }
+
     neighbors: dict[int, list[tuple[int, float]]] = {i: [] for i in range(len(stops))}
     reach = walk["max_transfer_walk_m"]
     points = [(s["lat"], s["lon"]) for s in stops]
@@ -202,7 +208,7 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
             d = distance_m(p, q)
             if i != j and d <= reach:
                 neighbors[i].append((j, walk_minutes(d, walk)))
-    return Graph(ref, stops, lines, waits, rides, dict(walk), transit, neighbors)
+    return Graph(ref, stops, lines, waits, rides, dict(walk), transit, neighbors, headways)
 
 
 def travel_times(
