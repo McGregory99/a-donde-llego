@@ -93,6 +93,12 @@ describe('url state robustness (R7.4)', () => {
     expect(ignored).toContain('c');
   });
 
+  it('an oversize query is dropped whole: defaults and ignored == ["query"]', () => {
+    const { state, ignored } = parse('o=41.65,-4.72&' + 'x=1&'.repeat(600));
+    expect(state).toEqual(defaultState(city));
+    expect(ignored).toEqual(['query']);
+  });
+
   it('clamps the scale to its range and rounds it', () => {
     expect(parse('max=1').state.scale).toBe(5);
     expect(parse('max=100000').state.scale).toBe(120);
