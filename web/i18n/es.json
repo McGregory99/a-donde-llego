@@ -1,0 +1,64 @@
+{
+  "app": {
+    "title": "¿A dónde llego?",
+    "subtitle": "Mapa de tiempos de viaje en transporte público"
+  },
+  "controls": {
+    "departure": "Salida",
+    "arrival": "Llegada",
+    "direction": "Sentido del viaje",
+    "invert": "Invertir: ver desde dónde se llega",
+    "myPosition": "Mi posición",
+    "share": "Compartir",
+    "shareCopied": "Enlace copiado al portapapeles",
+    "modes": "Modos de transporte",
+    "scale": "Tiempo máximo: {minutes} min",
+    "isochrones": "Isócronas",
+    "search": "Buscar una dirección o un lugar",
+    "searchPlaceholder": "Dirección o lugar"
+  },
+  "modes": {
+    "walk": "A pie",
+    "bus": "Autobús"
+  },
+  "isochrone": {
+    "label": "{minutes} min",
+    "toggle": "Mostrar la isócrona de {minutes} min"
+  },
+  "legend": {
+    "departure": "Tiempo de viaje desde el punto de salida",
+    "arrival": "Tiempo de viaje hasta el punto de llegada",
+    "minutes": "{minutes} min",
+    "beyond": "Más de {minutes} min"
+  },
+  "itinerary": {
+    "title": "Itinerario",
+    "total": "Duración total: {minutes} min",
+    "notReachable": "No se puede llegar a este punto dentro del tiempo límite."
+  },
+  "legs": {
+    "walk": {
+      "toStop": "Camina {minutes} min hasta la parada {stop}",
+      "toPoint": "Camina {minutes} min hasta el punto de llegada"
+    },
+    "wait": "Espera {minutes} min la línea {line} en la parada {stop}",
+    "ride": {
+      "route": "Viaja {minutes} min en la línea {line} ({route}) desde {from} hasta {to}",
+      "plain": "Viaja {minutes} min en la línea {line} desde {from} hasta {to}"
+    },
+    "transfer": {
+      "same": "Transbordo en la parada {stop}: {minutes} min",
+      "walk": "Transbordo de {from} a {to}: {minutes} min"
+    }
+  },
+  "errors": {
+    "invalidLink": "El enlace compartido no es válido o está fuera de la zona cubierta; se ha cargado la vista por defecto.",
+    "outOfBounds": "Ese punto está fuera de la zona cubierta.",
+    "geolocationDenied": "No se ha podido obtener tu posición: permiso denegado. La salida no ha cambiado.",
+    "geolocationUnavailable": "No se ha podido obtener tu posición. La salida no ha cambiado.",
+    "outsideCity": "Tu posición está fuera de la zona cubierta. La salida no ha cambiado.",
+    "geocoder": "La búsqueda no está disponible ahora. Puedes seguir eligiendo el punto en el mapa.",
+    "shareFailed": "No se ha podido copiar el enlace.",
+    "dataLoad": "No se han podido cargar los datos del mapa. Inténtalo de nuevo más tarde."
+  }
+}

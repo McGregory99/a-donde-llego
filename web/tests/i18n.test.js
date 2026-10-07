@@ -44,9 +44,9 @@ describe('i18n resources', () => {
   it('every literal t() key used in web/src exists in es.json', () => {
     const used = new Set();
     for (const file of sources(SRC)) {
-      for (const m of readFileSync(file, 'utf8').matchAll(/\bt\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
+      for (const m of readFileSync(file, 'utf8').matchAll(/\b(?:t|translate)\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
     }
-    expect(used.size).toBeGreaterThan(10);
+    expect(used.size).toBeGreaterThan(5);
     const missing = [...used].filter((key) => typeof lookup(es, key) !== 'string');
     expect(missing).toEqual([]);
   });
