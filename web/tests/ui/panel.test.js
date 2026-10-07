@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 // R5.1-R5.7: the itinerary panel shows total, step list, or the not-reachable message.
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import golden from '../golden/travel_times.json';
 import { describeLeg, t } from '../../src/i18n.js';
 import { destinationTrip } from '../../src/ui/scene.js';
 import { renderTrip } from '../../src/ui/panel.js';
 
-const { graph } = JSON.parse(readFileSync(new URL('../golden/travel_times.json', import.meta.url), 'utf8'));
+const { graph } = golden;
 const base = { origin: [41.6, -4.7], direction: 'departure', modes: ['road', 'rail'], scale: 120, destination: null };
 const far = [41.6, -4.627923498088196];
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // R6.1-R6.4, R6.6: address search with suggestions, outside/no-result notes, non-blocking errors.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { t } from '../../src/i18n.js';
 import { GeocoderError } from '../../src/geocoder/index.js';
 import { createSearch } from '../../src/ui/search.js';
@@ -9,12 +9,9 @@ const place = (label, lat = 41.65, lon = -4.72) => ({ label, lat, lon });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 let container;
 
-beforeEach(() => {
+function setup(geocoder) {
   container = document.createElement('div');
   document.body.replaceChildren(container);
-});
-
-function setup(geocoder) {
   const onSelect = vi.fn();
   const onError = vi.fn();
   const search = createSearch(container, { geocoder, t, onSelect, onError });
