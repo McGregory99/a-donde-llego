@@ -78,3 +78,42 @@ def test_network_without_stops_is_a_clear_error():
     graph.stops.clear()
     with pytest.raises(StatsError, match="stops"):
         stats(graph)
+
+
+def square(west_m, south_m, east_m, north_m):
+    """Closed ring in [lat, lon] around a metric box, as boundary.json stores it."""
+    ring = [at(west_m, south_m), at(east_m, south_m), at(east_m, north_m), at(west_m, north_m)]
+    return [[list(p) for p in [*ring, ring[0]]]]
+
+
+def test_reach_is_measured_over_stops_inside_the_boundary():
+    # C and D lie outside the city; only A and B count, and both are within 30 minutes.
+    boundary = {"id": 1, "polygons": [square(-500, -500, 1500, 500)]}
+    result = stats(boundary=boundary)["reach"]
+    assert result["percent_stops"] == 100.0
+    assert result["scope"] == "boundary"
+
+
+def test_boundary_scope_excludes_unreachable_stops_inside_it():
+    # A, B, C inside; only A and B are reached -> 2 of 3.
+    boundary = {"id": 1, "polygons": [square(-500, -500, 8500, 500)]}
+    assert stats(boundary=boundary)["reach"]["percent_stops"] == 66.7
+
+
+def test_a_hole_in_the_boundary_excludes_its_stops():
+    outer, hole = square(-500, -500, 8500, 500)[0], square(400, -100, 800, 100)[0]
+    boundary = {"id": 1, "polygons": [[outer, hole]]}  # B sits in the hole -> A, C inside
+    assert stats(boundary=boundary)["reach"]["percent_stops"] == 50.0
+
+
+def test_without_a_boundary_every_stop_is_served_by_definition():
+    # A stop is always within max_access_m of a stop, so the whole stop set is the area.
+    for boundary in (None, {"id": None, "polygons": []}):
+        result = stats(boundary=boundary)["reach"]
+        assert (result["percent_stops"], result["scope"]) == (50.0, "served")
+
+
+def test_boundary_with_no_stops_inside_is_a_clear_error():
+    far = {"id": 1, "polygons": [square(50_000, 50_000, 51_000, 51_000)]}
+    with pytest.raises(StatsError, match="boundary"):
+        stats(boundary=far)
