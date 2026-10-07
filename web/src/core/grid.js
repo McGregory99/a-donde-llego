@@ -21,6 +21,23 @@ export function cellCenter(grid, row, col) {
   return [south + (row + 0.5) * grid.dLat, west + (col + 0.5) * grid.dLon];
 }
 
+/** Calls `visit(index, distanceM)` for every cell whose centre is within `radiusM` of `anchor` ([lat, lon]). */
+export function forEachCellNear(grid, anchor, radiusM, visit) {
+  const [west, south] = grid.bbox;
+  const radiusLat = (radiusM / METRES_PER_DEGREE_LAT) * 1.01;
+  const radiusLon = radiusLat / Math.cos((anchor[0] * Math.PI) / 180);
+  const rowFrom = Math.max(0, Math.floor((anchor[0] - radiusLat - south) / grid.dLat));
+  const rowTo = Math.min(grid.rows - 1, Math.ceil((anchor[0] + radiusLat - south) / grid.dLat));
+  const colFrom = Math.max(0, Math.floor((anchor[1] - radiusLon - west) / grid.dLon));
+  const colTo = Math.min(grid.cols - 1, Math.ceil((anchor[1] + radiusLon - west) / grid.dLon));
+  for (let row = rowFrom; row <= rowTo; row += 1) {
+    for (let col = colFrom; col <= colTo; col += 1) {
+      const d = distanceM(anchor, cellCenter(grid, row, col));
+      if (d <= radiusM) visit(row * grid.cols + col, d);
+    }
+  }
+}
+
 /**
  * Minutes to (reverse: from) every cell centre; NaN where nothing is reachable.
  * A cell is reached by walking from the point itself or from a reachable stop,
@@ -29,25 +46,11 @@ export function cellCenter(grid, row, col) {
 export function computeGrid(grid, graph, point, options = {}) {
   const { walk } = graph;
   const times = new Float32Array(grid.cols * grid.rows).fill(NaN);
-  const [west, south] = grid.bbox;
-  const radiusLat = (walk.max_access_m / METRES_PER_DEGREE_LAT) * 1.01;
-
-  const stamp = (anchor, base) => {
-    const radiusLon = radiusLat / Math.cos((anchor[0] * Math.PI) / 180);
-    const rowFrom = Math.max(0, Math.floor((anchor[0] - radiusLat - south) / grid.dLat));
-    const rowTo = Math.min(grid.rows - 1, Math.ceil((anchor[0] + radiusLat - south) / grid.dLat));
-    const colFrom = Math.max(0, Math.floor((anchor[1] - radiusLon - west) / grid.dLon));
-    const colTo = Math.min(grid.cols - 1, Math.ceil((anchor[1] + radiusLon - west) / grid.dLon));
-    for (let row = rowFrom; row <= rowTo; row += 1) {
-      for (let col = colFrom; col <= colTo; col += 1) {
-        const d = distanceM(anchor, cellCenter(grid, row, col));
-        if (d > walk.max_access_m) continue;
-        const minutes = base + walkMinutes(d, walk);
-        const index = row * grid.cols + col;
-        if (!(times[index] <= minutes)) times[index] = minutes;
-      }
-    }
-  };
+  const stamp = (anchor, base) =>
+    forEachCellNear(grid, anchor, walk.max_access_m, (index, d) => {
+      const minutes = base + walkMinutes(d, walk);
+      if (!(times[index] <= minutes)) times[index] = minutes;
+    });
 
   stamp(point, 0);
   const viaStop = stopTimes(graph, point, options);
