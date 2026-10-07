@@ -1,6 +1,6 @@
 """Build CLI: GTFS + OSM -> static JSON assets for one city (R2.1, R2.5, R2.6).
 
-Usage: python -m adl.build CITY [--out DIR] [--gtfs-file ZIP] [--allow-expired] [--skip-osm]
+Usage (from the repo root): PYTHONPATH=pipeline uv run python -m adl.build CITY [--out DIR] [--gtfs-file ZIP] [--allow-expired] [--skip-osm]
 Writes ``<out>/<city>/{meta,graph,lines,boundary,basemap,stats}.json``.
 Exit codes: 0 ok, 1 build failure, 2 feed expired.
 
@@ -32,7 +32,7 @@ from adl.stats import StatsError, compute_stats
 
 ASSET_FILES = ("basemap.json", "boundary.json", "graph.json", "lines.json", "meta.json", "stats.json")
 SCHEMA_VERSION = 1
-DEFAULT_OUT = Path("dist") / "data"
+DEFAULT_OUT = Path(__file__).resolve().parents[2] / "dist" / "data"
 
 
 def graph_asset(graph: Graph, feed: Feed) -> dict:
@@ -124,7 +124,7 @@ def osm_context(city: dict, fetcher: Callable[[str], dict], skip: bool) -> tuple
 def main(argv=None, *, fetcher=overpass_fetch, opener=urlopen, now: datetime | None = None) -> int:
     parser = argparse.ArgumentParser(prog="adl.build")
     parser.add_argument("city", help="city id (cities/<id>.json)")
-    parser.add_argument("--out", default=str(DEFAULT_OUT), help="output root (default dist/data)")
+    parser.add_argument("--out", default=str(DEFAULT_OUT), help="output root (default <repo>/dist/data)")
     parser.add_argument("--gtfs-file", help="use a local GTFS zip instead of downloading")
     parser.add_argument("--allow-expired", action="store_true", help="dev only: warn on expired feeds")
     parser.add_argument("--skip-osm", action="store_true", help="offline: no boundary or basemap")
