@@ -69,7 +69,8 @@ def build_assets(
     """Pure: parsed inputs -> ({file name: JSON value}, warnings)."""
     graph = build_graph(feed, city, today=today)
     lines, warnings = line_geometry(feed, graph)
-    stats = compute_stats(graph, origins=[tuple(city["center"])], feed_meta=feed_meta, build_date=today)
+    stats = compute_stats(graph, origins=[tuple(city["center"])], feed_meta=feed_meta,
+                           build_date=today, boundary=boundary)
     meta = {
         "schema": SCHEMA_VERSION,
         "city": {"id": city["id"], "name": city["name"]},

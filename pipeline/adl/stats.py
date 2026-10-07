@@ -1,7 +1,11 @@
 """Build-time aggregates (R8.1, R8.3, R8.4), computed with the map's own model.
 
 Reach: share of stops whose ``travel_times`` from an origin is within the
-threshold, averaged over the origin set. Headway: median of window length /
+threshold, averaged over the origin set. The share is never taken over the city
+bbox (mostly countryside, which would dilute it). Its area is the set of stops
+inside the city boundary when one is given ("boundary" scope), otherwise every
+stop ("served" scope: each stop is within ``max_access_m`` of a stop, itself,
+and nothing else defines the served area without a boundary). Headway: median of window length /
 departures per (stop, line), per line and overall. Pure; no clock.
 """
 
@@ -11,6 +15,7 @@ import statistics
 from collections import defaultdict
 from datetime import date
 
+from adl.boundary import contains
 from adl.graph import Graph, travel_times
 
 DEFAULT_THRESHOLD_MIN = 30
@@ -31,6 +36,7 @@ def compute_stats(
     feed_meta: dict,
     build_date: date,
     threshold_min: float = DEFAULT_THRESHOLD_MIN,
+    boundary: dict | None = None,
 ) -> dict:
     if not origins:
         raise StatsError("no origins given: reach needs at least one origin")
@@ -38,7 +44,12 @@ def compute_stats(
         raise StatsError("graph has no stops: nothing to measure")
     if not graph.headways:
         raise StatsError("graph has no headways: no line departs inside the window")
+    polygons = (boundary or {}).get("polygons") or []
     coords = [(s["lat"], s["lon"]) for s in graph.stops]
+    if polygons:
+        coords = [c for c in coords if contains(polygons, c)]
+        if not coords:
+            raise StatsError("boundary contains none of the stops: check the boundary relation")
     shares = []
     for origin in origins:
         times = travel_times(graph, origin, coords)
@@ -56,6 +67,7 @@ def compute_stats(
         "reach": {
             "threshold_min": threshold_min,
             "origins": len(origins),
+            "scope": "boundary" if polygons else "served",
             "percent_stops": round(sum(shares) / len(shares), 1),
         },
         "headway": {

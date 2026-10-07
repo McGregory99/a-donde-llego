@@ -92,6 +92,17 @@ def _inside(point: Point, ring: list[Point]) -> bool:
     return inside
 
 
+def contains(polygons: list, point: Point) -> bool:
+    """True when ``point`` lies inside any polygon of a boundary asset (holes excluded).
+
+    ``polygons`` is the boundary.json shape: ``[[outer_ring, *hole_rings], ...]``.
+    """
+    return any(
+        _inside(point, group[0]) and not any(_inside(point, hole) for hole in group[1:])
+        for group in polygons
+    )
+
+
 def _polygons(element: dict, min_distance_m: float) -> list[list[list[list[float]]]]:
     if element["type"] == "way":
         pts = _points(element.get("geometry") or [])
