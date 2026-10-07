@@ -98,9 +98,11 @@ describe('performance (R4.8)', () => {
   it('recomputes the full-city grid on 570 stops in under one second', () => {
     const big = synthetic(570, 58);
     const city = createGrid([-4.93, 41.52, -4.63, 41.81], 100);
+    const start = big.stops[big.rides[0][1]];
+    const origin = [start.lat, start.lon];
     computeGrid(city, big, [41.62, -4.72]); // warm-up (prepares lookup tables, JIT)
     const started = performance.now();
-    const times = computeGrid(city, big, [41.66, -4.7]);
+    const times = computeGrid(city, big, origin);
     const elapsed = performance.now() - started;
     expect(times.some((t) => t > 15)).toBe(true);
     expect(elapsed).toBeLessThan(1000);
