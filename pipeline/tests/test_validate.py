@@ -81,3 +81,17 @@ def test_uncompressed_size_cap_blocks_zip_bombs(make_zip):
 def test_binary_members_are_not_parsed(make_zip):
     path = make_zip("mini_gtfs", extra={"payload.bin": b"\x00\x01"})
     assert "payload.bin" not in read_feed(path)
+
+
+def test_corrupt_member_data_is_wrapped_into_gtfs_error(make_zip, tmp_path):
+    # Re-pack stored (uncompressed), then flip a payload byte so the CRC check
+    # fails while reading the member.
+    out = tmp_path / "crc.zip"
+    with zipfile.ZipFile(make_zip("mini_gtfs")) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as zout:
+        for info in zin.infolist():
+            zout.writestr(info.filename, zin.read(info.filename))
+    data = bytearray(out.read_bytes())
+    data[data.index(b"agency_id")] ^= 0xFF
+    out.write_bytes(bytes(data))
+    with pytest.raises(GtfsError, match="agency.txt"):
+        read_feed(out)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import zip_dir
 from adl.fetch import FetchError, fetch_gtfs, main
 from adl.gtfs_validate import ExpiredFeedError, GtfsError
 
@@ -145,3 +146,41 @@ def test_cli_writes_metadata_from_city_config(make_zip, tmp_path):
     assert code == 0
     meta = json.loads((out / "feed-meta.json").read_text(encoding="utf-8"))
     assert meta["expired"] is False and meta["valid_from"] == "2026-01-01"
+
+
+def test_malformed_content_length_is_treated_as_unknown(make_zip, tmp_path):
+    good = zip_bytes(make_zip, "mini_gtfs")
+
+    def opener(url, timeout=None):
+        resp = FakeResponse(good)
+        resp.headers = {"Content-Length": "not-a-number"}
+        return resp
+
+    result = fetch_gtfs(["http://a.test/ok"], tmp_path / "out", TODAY, opener=opener)
+    assert result.valid_to == date(2027, 12, 31)
+
+
+def test_malformed_content_length_still_enforces_stream_cap(tmp_path):
+    def opener(url, timeout=None):
+        resp = FakeResponse(b"0" * 5000)
+        resp.headers = {"Content-Length": "garbage"}
+        return resp
+
+    with pytest.raises(FetchError, match="exceeds"):
+        fetch_gtfs(["http://a.test/big"], tmp_path / "out", TODAY, opener=opener, max_bytes=1000)
+
+
+def test_not_yet_valid_feed_is_skipped(make_zip, tmp_path):
+    src = tmp_path / "future"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "fixtures" / "mini_gtfs", src)
+    (src / "calendar.txt").write_text(
+        "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\n"
+        "WK,1,1,1,1,1,0,0,20270101,20271231\n",
+        encoding="utf-8",
+    )
+    future = zip_dir(src)
+    opener = opener_for({"http://a.test/future": future, "http://b.test/now": zip_bytes(make_zip, "mini_gtfs")})
+    result = fetch_gtfs(["http://a.test/future", "http://b.test/now"], tmp_path / "out", TODAY, opener=opener)
+    assert result.source == "http://b.test/now"
+    with pytest.raises(FetchError, match="not valid before 2027-01-01"):
+        fetch_gtfs(["http://a.test/future"], tmp_path / "o2", TODAY, opener=opener)
