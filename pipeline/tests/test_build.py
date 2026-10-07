@@ -181,6 +181,14 @@ def test_failed_build_keeps_the_previous_output(cities_dir, tmp_path, make_zip, 
     assert sorted(p.name for p in out.iterdir()) == ["mini"]  # no half-written leftovers
 
 
+def test_rebuild_replaces_the_previous_output_cleanly(cities_dir, tmp_path, make_zip):
+    out = tmp_path / "out"
+    assert run(cities_dir, out, make_zip) == 0
+    assert run(cities_dir, out, make_zip) == 0
+    assert sorted(p.name for p in (out / "mini").iterdir()) == sorted(ASSET_FILES)
+    assert sorted(p.name for p in out.iterdir()) == ["mini"]  # old build removed, no leftovers
+
+
 def test_missing_city_config_is_a_clear_error(cities_dir, tmp_path, make_zip, capsys):
     argv = ["nowhere", "--out", str(tmp_path / "out"), "--cities-dir", str(cities_dir),
             "--gtfs-file", make_zip("mini_gtfs").name]

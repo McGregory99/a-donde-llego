@@ -101,10 +101,12 @@ def write_assets(assets: dict[str, dict], out_dir: Path) -> None:
         for name, value in assets.items():
             (staging / name).write_bytes(serialize(value))
         if out_dir.exists():
-            old = staging / "previous"
+            # The old build must sit next to out_dir, not inside staging, or the swap would carry it along.
+            old = Path(tempfile.mkdtemp(dir=out_dir.parent, prefix=f".{out_dir.name}-old-"))
+            old.rmdir()
             out_dir.rename(old)
             staging.rename(out_dir)
-            shutil.rmtree(old)
+            shutil.rmtree(old, ignore_errors=True)
         else:
             staging.rename(out_dir)
     except BaseException:
