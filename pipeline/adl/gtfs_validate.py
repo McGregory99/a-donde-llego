@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import zipfile
+import zlib
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 
@@ -75,11 +76,16 @@ def read_feed(path: Path | str, max_bytes: int = MAX_ZIP_BYTES) -> Feed:
                 raise GtfsError(f"unsafe member path in zip: {info.filename!r}")
         if sum(i.file_size for i in infos) > max_bytes:
             raise GtfsError(f"zip content too large (limit {max_bytes} bytes)")
-        return {
-            i.filename: _parse_csv(zf.read(i), i.filename)
-            for i in infos
-            if i.filename.endswith(".txt") and not i.is_dir()
-        }
+        feed: Feed = {}
+        for i in infos:
+            if not i.filename.endswith(".txt") or i.is_dir():
+                continue
+            try:
+                raw = zf.read(i)
+            except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, OSError) as exc:
+                raise GtfsError(f"{i.filename}: cannot be read from zip ({exc})") from None
+            feed[i.filename] = _parse_csv(raw, i.filename)
+        return feed
 
 
 def validate_feed(feed: Feed) -> None:
