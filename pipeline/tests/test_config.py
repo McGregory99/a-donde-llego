@@ -104,3 +104,30 @@ def test_shipped_valladolid_config_loads():
         "http://212.170.201.204:50080/GTFSRTapi/api/GTFSFile"
     ]
     assert set(city["modes"]) == {"walk", "bus"}
+
+
+def test_schema_is_read_from_the_cities_dir_override(tmp_path):
+    write_city(tmp_path, VALID)
+    (tmp_path / "schema.json").write_text(
+        json.dumps({"type": "object", "required": ["marker"]}), encoding="utf-8"
+    )
+    with pytest.raises(ConfigError, match="marker"):
+        load_city("foo", tmp_path)
+
+
+def test_non_utf8_file_is_a_config_error(tmp_path):
+    (tmp_path / "foo.json").write_bytes(b"\xff\xfe\x00bad")
+    with pytest.raises(ConfigError, match="foo.json"):
+        load_city("foo", tmp_path)
+
+
+def test_unreadable_path_is_a_config_error(tmp_path):
+    (tmp_path / "foo.json").mkdir()
+    with pytest.raises(ConfigError, match="foo.json"):
+        load_city("foo", tmp_path)
+
+
+def test_non_object_json_is_a_config_error(tmp_path):
+    (tmp_path / "foo.json").write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(ConfigError, match="foo.json.*object"):
+        load_city("foo", tmp_path)
