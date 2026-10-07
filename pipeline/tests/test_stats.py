@@ -2,10 +2,11 @@
 
 from datetime import date
 
+import pytest
 from test_graph import HOUR, TODAY, at, make_city, make_feed, six_an_hour
 
 from adl.graph import build_graph, travel_times
-from adl.stats import compute_stats
+from adl.stats import StatsError, compute_stats
 
 META = {"valid_from": "2026-10-07", "valid_to": "2026-12-27", "expired": False}
 
@@ -18,7 +19,8 @@ def toy_graph():
 
 
 def stats(graph=None, **kwargs):
-    return compute_stats(graph or toy_graph(), origins=[at(0)], feed_meta=META, build_date=date(2026, 10, 7), **kwargs)
+    kwargs.setdefault("origins", [at(0)])
+    return compute_stats(graph or toy_graph(), feed_meta=META, build_date=date(2026, 10, 7), **kwargs)
 
 
 def test_two_of_four_stops_within_30_minutes_is_50_percent():
@@ -57,3 +59,22 @@ def test_counts_and_feed_validity_and_build_date_are_recorded():
 
 def test_stats_are_deterministic():
     assert stats() == stats()
+
+
+def test_empty_origin_set_is_a_clear_error():
+    with pytest.raises(StatsError, match="origin"):
+        stats(origins=[])
+
+
+def test_network_without_headways_is_a_clear_error():
+    graph = toy_graph()
+    graph.headways.clear()
+    with pytest.raises(StatsError, match="headway"):
+        stats(graph)
+
+
+def test_network_without_stops_is_a_clear_error():
+    graph = toy_graph()
+    graph.stops.clear()
+    with pytest.raises(StatsError, match="stops"):
+        stats(graph)
