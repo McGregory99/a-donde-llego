@@ -55,7 +55,11 @@ class FeedResult:
 def _download(url: str, dest: Path, opener, max_bytes: int) -> None:
     with opener(url, timeout=TIMEOUT_S) as resp:
         declared = resp.headers.get("Content-Length")
-        if declared is not None and int(declared) > max_bytes:
+        try:
+            declared_size = int(declared) if declared is not None else None
+        except ValueError:
+            declared_size = None  # malformed header: unknown size, stream cap still applies
+        if declared_size is not None and declared_size > max_bytes:
             raise FetchError(f"{url}: declared size {declared} exceeds limit {max_bytes}")
         size = 0
         with dest.open("wb") as out:
