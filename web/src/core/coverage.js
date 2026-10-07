@@ -3,7 +3,14 @@
 // A percentage over the whole bbox is meaningless: the bbox is mostly countryside
 // (only ~13% of a typical city bbox is reachable at all). The area is the cells inside
 // the city boundary when the asset has one, otherwise the cells within the walking
-// radius (max_access_m) of any stop. Mirrors pipeline/adl/stats.py's two scopes.
+// radius (max_access_m) of any stop.
+//
+// Relation to pipeline/adl/stats.py: the scope names match ("boundary" / "served") but the
+// unit differs. The pipeline counts STOPS (boundary: stops inside the polygon; served: every
+// stop, since each is trivially within the radius of itself), the client counts GRID CELLS.
+// With a boundary both measure the same polygon, so the figures are comparable; without one
+// the client's denominator is the union of walking-radius discs around stops (area), so its
+// percentage is not expected to equal the pipeline's stop-based one.
 import { cellCenter, forEachCellNear } from './grid.js';
 import { pointInPolygons } from './geo.js';
 
