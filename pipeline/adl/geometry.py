@@ -1,6 +1,7 @@
 """Line geometry for the map (R2.4). Pure: OSM-derived shapes are passed in.
 
-Per graph line (route + direction) the most used trip shape wins: ``shapes.txt``
+Per graph line (route + direction) the most used shape among trips running on the
+reference date wins: ``shapes.txt``
 first, then caller-supplied OSM polylines, then straight stop-to-stop segments
 (with a warning). Points are ``[lat, lon]`` rounded to 5 decimals.
 """
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
-from adl.graph import Graph, distance_m
+from adl.graph import Graph, distance_m, services_on
 
 COORD_DECIMALS = 5
 
@@ -53,9 +54,12 @@ def line_geometry(
     for row in feed["stop_times.txt"]:
         seq_by_trip[row["trip_id"]].append((int(row["stop_sequence"]), row["stop_id"]))
 
+    active = services_on(feed, graph.reference_date)
     shapes_of: dict[tuple[str, str], Counter] = defaultdict(Counter)
     stops_of: dict[tuple[str, str], Counter] = defaultdict(Counter)
     for trip in feed["trips.txt"]:
+        if trip["service_id"] not in active:
+            continue
         key = (trip["route_id"], trip.get("direction_id") or "0")
         if trip.get("shape_id") in shape_points:
             shapes_of[key][trip["shape_id"]] += 1
