@@ -28,6 +28,13 @@ class BoundaryError(Exception):
     """OSM data is missing, unusable or unreachable."""
 
 
+def _usable(payload) -> bool:
+    """Overpass answers HTTP 200 even on timeouts: reject runtime-error remarks and empty results."""
+    if not isinstance(payload, dict) or "runtime error" in str(payload.get("remark", "")).lower():
+        return False
+    return bool(payload.get("elements"))
+
+
 def overpass_fetch(query: str, *, urls=None, opener=urllib.request.urlopen, sleep=time.sleep,
                    attempts: int = 2, timeout: float = 120) -> dict:
     """POST ``query`` to each Overpass endpoint in turn (``attempts`` rounds)."""
@@ -37,9 +44,11 @@ def overpass_fetch(query: str, *, urls=None, opener=urllib.request.urlopen, slee
             request = urllib.request.Request(url, data=body, headers={"User-Agent": USER_AGENT})
             try:
                 with opener(request, timeout=timeout) as reply:
-                    return json.loads(reply.read())
+                    payload = json.loads(reply.read())
             except (OSError, ValueError):
                 continue
+            if _usable(payload):
+                return payload
         if attempt + 1 < attempts:
             sleep(5 * (attempt + 1))
     raise BoundaryError("Overpass unavailable: no endpoint returned a usable answer")
