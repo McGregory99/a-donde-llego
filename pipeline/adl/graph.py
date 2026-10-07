@@ -129,10 +129,14 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
             mode_of_type.setdefault(str(route_type), mode_id)
     window = city["window"]
     start, end = _clock(window["start"]), _clock(window["end"])
+    if end <= start:
+        raise GraphError(f"city window end {window['end']} must be after start {window['start']}")
     window_min = (end - start) / 60.0
 
     ref = reference_date or pick_reference_date(feed, today)
     active = _services_by_date(feed).get(ref, set())
+    if not active:
+        raise GraphError(f"no service on reference date {ref.isoformat()}")
     route_mode = {
         r["route_id"]: mode_of_type[r["route_type"]]
         for r in feed["routes.txt"]
