@@ -186,3 +186,9 @@ def test_missing_city_config_is_a_clear_error(cities_dir, tmp_path, make_zip, ca
             "--gtfs-file", make_zip("mini_gtfs").name]
     assert main(argv, fetcher=overpass, now=NOW) == 1
     assert "nowhere.json" in capsys.readouterr().err
+
+
+def test_default_output_root_is_dist_data_at_the_repository_root_whatever_the_cwd():
+    from adl.build import DEFAULT_OUT
+
+    assert DEFAULT_OUT == Path(__file__).resolve().parents[2] / "dist" / "data"
