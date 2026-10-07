@@ -16,6 +16,10 @@ from adl.graph import Graph, travel_times
 DEFAULT_THRESHOLD_MIN = 30
 
 
+class StatsError(Exception):
+    """The network cannot support the requested aggregates."""
+
+
 def _median(values: list[float]) -> float:
     return round(statistics.median(values), 1)
 
@@ -28,6 +32,12 @@ def compute_stats(
     build_date: date,
     threshold_min: float = DEFAULT_THRESHOLD_MIN,
 ) -> dict:
+    if not origins:
+        raise StatsError("no origins given: reach needs at least one origin")
+    if not graph.stops:
+        raise StatsError("graph has no stops: nothing to measure")
+    if not graph.headways:
+        raise StatsError("graph has no headways: no line departs inside the window")
     coords = [(s["lat"], s["lon"]) for s in graph.stops]
     shares = []
     for origin in origins:
