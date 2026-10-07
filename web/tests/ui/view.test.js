@@ -1,6 +1,6 @@
 // Projection and pan/zoom of the canvas map.
 import { describe, expect, it } from 'vitest';
-import { createProjection, fitView, panBy, resizeView, toScreen, toWorldPoint, zoomAt } from '../../src/ui/view.js';
+import { boundsOf, createProjection, fitView, panBy, resizeView, toScreen, toWorldPoint, zoomAt } from '../../src/ui/view.js';
 
 const size = { width: 800, height: 600 };
 
@@ -90,5 +90,15 @@ describe('panBy and resizeView', () => {
     expect(resized.scale).toBeCloseTo(view.scale / 2, 9);
     expect(resized.fitScale).toBeCloseTo(view.fitScale / 2, 9);
     expect([resized.cx, resized.cy]).toEqual([view.cx, view.cy]);
+  });
+});
+
+describe('boundsOf', () => {
+  it('is the bounding box of the points grown by the margin', () => {
+    expect(boundsOf([[0, 10], [100, -20], [50, 5]], 10)).toEqual([-10, -30, 110, 20]);
+  });
+
+  it('is null for no points, so callers can fall back to another extent', () => {
+    expect(boundsOf([], 10)).toBeNull();
   });
 });
