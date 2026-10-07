@@ -65,3 +65,39 @@ def test_straight_stop_segments_with_a_warning_as_last_resort():
 def test_geometry_is_deterministic():
     feed, graph = feed_and_graph(shape_rows([at(0), at(1500)]))
     assert line_geometry(feed, graph) == line_geometry(feed, graph)
+
+
+def test_only_trips_active_on_the_reference_date_choose_the_shape():
+    feed, graph = feed_and_graph(shape_rows([at(0), at(500, 40), at(1500)]))
+    # Three weekend-only trips on another shape outnumber the single weekday-pattern shape.
+    feed["shapes.txt"] += [
+        {"shape_id": "SAT", "shape_pt_lat": str(lat), "shape_pt_lon": str(lon), "shape_pt_sequence": str(n)}
+        for n, (lat, lon) in enumerate([at(0), at(500, -300), at(1500)], 1)
+    ]
+    feed["calendar.txt"].append(
+        {"service_id": "WE", "monday": "0", "tuesday": "0", "wednesday": "0", "thursday": "0",
+         "friday": "0", "saturday": "1", "sunday": "1", "start_date": "20260101", "end_date": "20271231"}
+    )
+    for i in range(30):
+        feed["trips.txt"].append(
+            {"route_id": "L", "service_id": "WE", "trip_id": f"we{i}", "direction_id": "0", "shape_id": "SAT"}
+        )
+    (line,), _ = line_geometry(feed, graph, min_distance_m=1)
+    assert line["points"][1] == [round(c, 5) for c in at(500, 40)]
+
+
+def test_stop_pattern_fallback_ignores_trips_inactive_on_the_reference_date():
+    feed, graph = feed_and_graph()
+    feed["calendar.txt"].append(
+        {"service_id": "WE", "monday": "0", "tuesday": "0", "wednesday": "0", "thursday": "0",
+         "friday": "0", "saturday": "1", "sunday": "1", "start_date": "20260101", "end_date": "20271231"}
+    )
+    for i in range(30):
+        tid = f"we{i}"
+        feed["trips.txt"].append({"route_id": "L", "service_id": "WE", "trip_id": tid, "direction_id": "0"})
+        feed["stop_times.txt"] += [
+            {"trip_id": tid, "stop_id": s, "arrival_time": "08:00:00", "departure_time": "08:00:00",
+             "stop_sequence": str(n)} for n, s in enumerate(["A", "C"], 1)
+        ]
+    (line,), _ = line_geometry(feed, graph, min_distance_m=1)
+    assert line["points"] == [[round(c, 5) for c in at(0)], [round(c, 5) for c in at(1500)]]
