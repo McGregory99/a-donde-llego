@@ -17,6 +17,14 @@ export function createProjection(reference) {
   };
 }
 
+/** [minX, minY, maxX, maxY] of world `points` grown by `margin` metres, or null when there are none. */
+export function boundsOf(points, margin = 0) {
+  if (!points.length) return null;
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  return [Math.min(...xs) - margin, Math.min(...ys) - margin, Math.max(...xs) + margin, Math.max(...ys) + margin];
+}
+
 /** View showing `bounds` = [minX, minY, maxX, maxY] centred in a canvas of `size`, with `pad` pixels around. */
 export function fitView(bounds, size, pad = 40) {
   const [minX, minY, maxX, maxY] = bounds;

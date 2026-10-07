@@ -2,7 +2,7 @@
 // World coordinates are metres from the projection (x east, y north); the y axis is flipped by the transform.
 import { labelSpot } from './contours.js';
 import { pointInPolygons } from '../core/geo.js';
-import { toScreen } from './view.js';
+import { boundsOf, toScreen } from './view.js';
 
 export const COLORS = {
   background: '#f1efe9',
@@ -17,6 +17,7 @@ export const COLORS = {
   trip: '#1d4ed8',
 };
 const HEAT_ALPHA = 0.78;
+const FIT_MARGIN_M = 1500; // around the outermost stops in the initial view
 const STOP_DOT_SCALE = 1.6; // zoom (relative to the fit scale) from which stops are drawn
 
 /** Stable pastel-dark colour per line, so neighbouring lines stay distinguishable without city data. */
@@ -243,7 +244,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       for (const item of markers) marker(view, size, item);
     },
 
-    /** Bounds of the city in world metres: [minX, minY, maxX, maxY]. */
-    bounds: [minX, minY, maxX, maxY],
+    /** Area the initial view shows, in world metres: the served area (stops plus margin), else the whole bbox. */
+    bounds: boundsOf(stops, FIT_MARGIN_M) ?? [minX, minY, maxX, maxY],
   };
 }
