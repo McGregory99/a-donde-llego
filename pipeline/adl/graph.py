@@ -209,9 +209,12 @@ def travel_times(
 ) -> list[float | None]:
     """Minimum minutes from ``origin`` to each point (None: unreachable).
 
-    Nodes: ``("S", stop)`` walked-to stop where boarding is possible, and
-    ``("R", stop, line)`` on a vehicle. Alighting never feeds back into a
-    boardable stop, so every line change pays ``transfer_min`` (R3.4).
+    Nodes: ``("S", stop)`` walked-to stop where boarding is possible,
+    ``("B", stop, line)`` just boarded (nothing ridden yet) and
+    ``("R", stop, line)`` after at least one ride hop. Only ridden nodes can
+    egress or transfer, so a stop is never a walking shortcut, and alighting
+    never feeds back into a boardable stop: every line change pays
+    ``transfer_min`` (R3.4).
     """
     enabled = set(graph.modes) if enabled_modes is None else enabled_modes
     walk, max_access = graph.walk, graph.walk["max_access_m"]
@@ -244,16 +247,18 @@ def travel_times(
             continue
         if node[0] == "S":
             for line, wait in boards[node[1]]:
-                push(cost + wait, ("R", node[1], line))
+                push(cost + wait, ("B", node[1], line))
             continue
-        _, stop, line = node
+        kind, stop, line = node
         for nxt, minutes in ride_from[(stop, line)]:
             push(cost + minutes, ("R", nxt, line))
+        if kind == "B":
+            continue
         for target, walk_min in [(stop, 0.0), *graph.neighbors[stop]]:
             for other, wait in boards[target]:
                 if other != line:
                     penalty = graph.modes[graph.lines[other]["mode"]]["transfer_min"]
-                    push(cost + penalty + walk_min + wait, ("R", target, other))
+                    push(cost + penalty + walk_min + wait, ("B", target, other))
 
     egress: dict[int, float] = {}
     for (kind, stop, *_), cost in best.items():
