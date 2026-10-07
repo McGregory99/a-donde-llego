@@ -1,0 +1,249 @@
+// Canvas painting of the map (browser only, thinly tested: the logic it draws lives in the pure modules).
+// World coordinates are metres from the projection (x east, y north); the y axis is flipped by the transform.
+import { labelSpot } from './contours.js';
+import { pointInPolygons } from '../core/geo.js';
+import { toScreen } from './view.js';
+
+export const COLORS = {
+  background: '#f1efe9',
+  land: '#e4e2dc',
+  water: '#bcd7e8',
+  park: 'rgba(120, 180, 90, 0.18)',
+  boundary: 'rgba(255, 255, 255, 0.9)',
+  contour: '#111111',
+  halo: 'rgba(255, 255, 255, 0.92)',
+  origin: '#3aa70b',
+  destination: '#111111',
+  trip: '#1d4ed8',
+};
+const HEAT_ALPHA = 0.78;
+const STOP_DOT_SCALE = 1.6; // zoom (relative to the fit scale) from which stops are drawn
+
+/** Stable pastel-dark colour per line, so neighbouring lines stay distinguishable without city data. */
+export function lineColor(key) {
+  let hash = 0;
+  for (const char of String(key)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return `hsl(${hash % 360} 55% 38%)`;
+}
+
+const addRing = (path, ring, toWorld) => {
+  ring.forEach((point, i) => {
+    const [x, y] = toWorld(point);
+    if (i) path.lineTo(x, y);
+    else path.moveTo(x, y);
+  });
+  path.closePath();
+};
+
+const polygonsPath = (polygons, toWorld) => {
+  const path = new Path2D();
+  for (const polygon of polygons) for (const ring of polygon) addRing(path, ring, toWorld);
+  return path;
+};
+
+/** Painter bound to a canvas and the static city assets. */
+export function createRenderer(canvas, { data, projection, bbox, graph }) {
+  const ctx = canvas.getContext('2d');
+  const toWorld = projection.toWorld;
+  const boundaryPolygons = data.boundary?.polygons ?? [];
+  const [west, south, east, north] = bbox;
+  const [minX, minY] = toWorld([south, west]);
+  const [maxX, maxY] = toWorld([north, east]);
+
+  const land = boundaryPolygons.length ? polygonsPath(boundaryPolygons, toWorld) : (() => {
+    const path = new Path2D();
+    path.rect(minX, minY, maxX - minX, maxY - minY);
+    return path;
+  })();
+  const water = (data.basemap?.water ?? []).map((polygon) => polygonsPath([polygon], toWorld));
+  const parks = (data.basemap?.parks ?? []).map((polygon) => polygonsPath([polygon], toWorld));
+  const lines = data.lines.lines.map((line) => {
+    const path = new Path2D();
+    line.points.forEach((point, i) => {
+      const [x, y] = toWorld(point);
+      if (i) path.lineTo(x, y);
+      else path.moveTo(x, y);
+    });
+    return { color: lineColor(line.id.split(':')[0]), path };
+  });
+  const stops = graph.stops.map((stop) => toWorld([stop.lat, stop.lon]));
+
+  const layers = { heat: null, contours: [], trip: null };
+
+  function worldTransform(view, size, dpr) {
+    ctx.setTransform(
+      dpr * view.scale, 0, 0, -dpr * view.scale,
+      dpr * (size.width / 2 - view.cx * view.scale),
+      dpr * (size.height / 2 + view.cy * view.scale),
+    );
+  }
+
+  function haloText(text, x, y, color) {
+    ctx.font = '700 12px Inter, system-ui, sans-serif';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = COLORS.halo;
+    ctx.lineWidth = 5;
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+  }
+
+  function marker(view, size, { point, color, label }) {
+    const [x, y] = toScreen(view, size, toWorld(point));
+    ctx.beginPath();
+    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.fillStyle = `${color}2e`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    if (!label) return;
+    ctx.font = '700 12px Inter, system-ui, sans-serif';
+    const width = ctx.measureText(label).width + 16;
+    const left = Math.min(Math.max(x - width / 2, 6), size.width - width - 6);
+    ctx.beginPath();
+    ctx.roundRect(left, y - 42, width, 22, 7);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, left + width / 2, y - 30.5);
+  }
+
+  function drawContours(view, size, markers) {
+    const px = 1 / view.scale;
+    const avoid = markers.map(({ point }) => toScreen(view, size, toWorld(point)));
+    const labels = [];
+    for (const { minutes, path, segments } of layers.contours) {
+      if (!segments.length) continue;
+      worldTransform(view, size, size.dpr);
+      ctx.save();
+      ctx.clip(land, 'evenodd');
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 4.5 * px;
+      ctx.stroke(path);
+      ctx.strokeStyle = COLORS.contour;
+      ctx.lineWidth = (minutes >= 30 ? 2 : 1.4) * px;
+      ctx.stroke(path);
+      ctx.restore();
+      const spot = labelSpot(segments, {
+        project: (world) => toScreen(view, size, world),
+        size,
+        avoid: [...avoid, ...labels.map((label) => label.at)],
+        isOnLand: (world) => !boundaryPolygons.length || pointInPolygons(boundaryPolygons, projection.toLatLon(world)),
+      });
+      if (spot) labels.push({ minutes, at: spot.at });
+    }
+    return labels;
+  }
+
+  return {
+    /** Heat raster: `image` = {width, height, data} from heatPixels, covering the bbox. */
+    setHeat(image) {
+      if (!image) {
+        layers.heat = null;
+        return;
+      }
+      const heat = layers.heat?.canvas ?? document.createElement('canvas');
+      heat.width = image.width;
+      heat.height = image.height;
+      heat.getContext('2d').putImageData(new ImageData(image.data, image.width, image.height), 0, 0);
+      layers.heat = { canvas: heat };
+    },
+
+    /** Contour segments per threshold, as returned by isochrones(): { [minutes]: [[[lat, lon], [lat, lon]], ...] }. */
+    setContours(contours) {
+      layers.contours = Object.entries(contours)
+        .map(([minutes, segments]) => {
+          const worldSegments = segments.map(([a, b]) => [toWorld(a), toWorld(b)]);
+          const path = new Path2D();
+          for (const [a, b] of worldSegments) {
+            path.moveTo(a[0], a[1]);
+            path.lineTo(b[0], b[1]);
+          }
+          return { minutes: Number(minutes), path, segments: worldSegments };
+        })
+        .sort((a, b) => a.minutes - b.minutes);
+    },
+
+    /** Highlighted itinerary path ([[lat, lon], ...]) or null. */
+    setTrip(points) {
+      layers.trip = points?.length > 1 ? points.map(toWorld) : null;
+    },
+
+    /** Paints one frame. `markers` = [{point: [lat, lon], color, label}] drawn in order (last on top). */
+    draw(view, size, markers, { contourLabel }) {
+      const { width, height, dpr } = size;
+      const px = 1 / view.scale;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = COLORS.background;
+      ctx.fillRect(0, 0, width, height);
+
+      worldTransform(view, size, dpr);
+      ctx.fillStyle = COLORS.land;
+      ctx.fill(land, 'evenodd');
+      if (layers.heat) {
+        ctx.save();
+        ctx.clip(land, 'evenodd'); // never paint outside the city boundary
+        ctx.globalAlpha = HEAT_ALPHA;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(layers.heat.canvas, minX, minY, maxX - minX, maxY - minY);
+        ctx.restore();
+      }
+      ctx.fillStyle = COLORS.park;
+      for (const park of parks) ctx.fill(park, 'evenodd');
+      ctx.fillStyle = COLORS.water;
+      for (const body of water) ctx.fill(body, 'evenodd');
+      ctx.strokeStyle = COLORS.boundary;
+      ctx.lineWidth = 1.1 * px;
+      ctx.stroke(land);
+
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = 0.8;
+      for (const line of lines) {
+        ctx.strokeStyle = line.color;
+        ctx.lineWidth = 2 * px;
+        ctx.stroke(line.path);
+      }
+      ctx.globalAlpha = 1;
+
+      const labels = drawContours(view, size, markers);
+      if (layers.trip) {
+        worldTransform(view, size, dpr);
+        const path = new Path2D();
+        layers.trip.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)));
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 7 * px;
+        ctx.stroke(path);
+        ctx.strokeStyle = COLORS.trip;
+        ctx.lineWidth = 4 * px;
+        ctx.stroke(path);
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (view.scale > view.fitScale * STOP_DOT_SCALE) {
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.55)';
+        for (const world of stops) {
+          const [x, y] = toScreen(view, size, world);
+          if (x < -4 || y < -4 || x > width + 4 || y > height + 4) continue;
+          ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+        }
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const { minutes, at } of labels) haloText(contourLabel(minutes), at[0], at[1], COLORS.contour);
+      for (const item of markers) marker(view, size, item);
+    },
+
+    /** Bounds of the city in world metres: [minX, minY, maxX, maxY]. */
+    bounds: [minX, minY, maxX, maxY],
+  };
+}
