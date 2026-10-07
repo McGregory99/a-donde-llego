@@ -2,7 +2,7 @@
   "id": "valladolid",
   "name": "Valladolid",
   "bbox": [-4.9281803, 41.5231281, -4.6308064, 41.8155086],
-  "center": [41.62, -4.72599],
+  "center": [41.6523, -4.7245],
   "locale": "es",
   "geocoder": { "provider": "photon" },
   "boundary": { "osm_relation_id": 348849 },
