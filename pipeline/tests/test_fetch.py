@@ -135,7 +135,7 @@ def test_cli_writes_metadata_from_city_config(make_zip, tmp_path):
     shutil.copy(repo / "cities" / "schema.json", cities / "schema.json")
     city = json.loads((repo / "cities" / "valladolid.json").read_text(encoding="utf-8"))
     city["id"] = "foo"
-    city["gtfs"]["sources"] = []
+    city["gtfs"]["sources"] = ["http://unused.test/f.zip"]
     (cities / "foo.json").write_text(json.dumps(city), encoding="utf-8")
     out = tmp_path / "out"
     code = main(
