@@ -1,11 +1,17 @@
 // Validates every cities/<id>.json against cities/schema.json.
 // Usage: node scripts/validate-cities.mjs [citiesDir]
 import { readdirSync, readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 
-export function validateCities(dir = 'cities') {
+export const DEFAULT_CITIES_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'cities',
+);
+
+export function validateCities(dir = DEFAULT_CITIES_DIR) {
   const schema = JSON.parse(readFileSync(join(dir, 'schema.json'), 'utf8'));
   const validate = new Ajv({ allErrors: true }).compile(schema);
   const errors = [];
