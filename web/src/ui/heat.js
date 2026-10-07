@@ -59,18 +59,19 @@ export function heatPixels(times, cols, rows, maxMinutes, upsample = 3) {
       const tx = clamp(gx - col0, 0, 1);
       let sum = 0;
       let weight = 0;
-      for (const [r, c, w] of [
-        [row0, col0, (1 - tx) * (1 - ty)],
-        [row0, col1, tx * (1 - ty)],
-        [row1, col0, (1 - tx) * ty],
-        [row1, col1, tx * ty],
-      ]) {
-        const value = filled[r * cols + c];
-        if (!Number.isNaN(value)) {
-          sum += value * w;
-          weight += w;
-        }
-      }
+      // Bilinear blend of the four surrounding cells, skipping those without data (no allocation: hot loop).
+      const v00 = filled[row0 * cols + col0];
+      const v01 = filled[row0 * cols + col1];
+      const v10 = filled[row1 * cols + col0];
+      const v11 = filled[row1 * cols + col1];
+      let w = (1 - tx) * (1 - ty);
+      if (v00 === v00) { sum += v00 * w; weight += w; }
+      w = tx * (1 - ty);
+      if (v01 === v01) { sum += v01 * w; weight += w; }
+      w = (1 - tx) * ty;
+      if (v10 === v10) { sum += v10 * w; weight += w; }
+      w = tx * ty;
+      if (v11 === v11) { sum += v11 * w; weight += w; }
       if (weight < 0.25) continue;
       const index = Math.round((sum / weight) * toLut);
       if (index >= LUT_SIZE) continue;
