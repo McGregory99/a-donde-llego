@@ -51,18 +51,25 @@ def _apply_defaults(city: dict) -> dict:
     return city
 
 
+def _read_json(path: Path, base: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ConfigError(f"{path.name}: not found in {base}") from None
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"{path.name}: invalid JSON ({exc})") from None
+    except (UnicodeDecodeError, OSError) as exc:
+        raise ConfigError(f"{path.name}: cannot be read ({exc})") from None
+
+
 def load_city(city_id: str, cities_dir: Path | str | None = None) -> dict:
     """Load and validate ``<cities_dir>/<city_id>.json``, filling mode defaults."""
     base = Path(cities_dir) if cities_dir is not None else CITIES_DIR
     path = base / f"{city_id}.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise ConfigError(f"{path.name}: city config not found in {base}") from None
-    except json.JSONDecodeError as exc:
-        raise ConfigError(f"{path.name}: invalid JSON ({exc})") from None
-
-    schema = json.loads((CITIES_DIR / "schema.json").read_text(encoding="utf-8"))
+    data = _read_json(path, base)
+    if not isinstance(data, dict):
+        raise ConfigError(f"{path.name}: top-level value must be a JSON object")
+    schema = _read_json(base / "schema.json", base)
     errors = sorted(Draft7Validator(schema).iter_errors(data), key=lambda e: list(e.absolute_path))
     if errors:
         lines = [f"{path.name}: field '{_field_path(e)}': {e.message}" for e in errors]

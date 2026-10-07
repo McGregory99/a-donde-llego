@@ -2,6 +2,7 @@
 
 import copy
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,7 @@ VALID = {
 
 
 def write_city(tmp_path, data, name="foo"):
+    shutil.copy(REPO / "cities" / "schema.json", tmp_path / "schema.json")
     (tmp_path / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
     return tmp_path
 
