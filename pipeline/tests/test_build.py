@@ -3,12 +3,11 @@
 import json
 import os
 import shutil
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from conftest import FIXTURES
 from adl.boundary import BoundaryError
 from adl.build import ASSET_FILES, main
 
@@ -44,6 +43,12 @@ def cities_dir(tmp_path):
     return path
 
 
+@pytest.fixture(autouse=True)
+def in_tmp_dir(tmp_path, monkeypatch):
+    """Feeds are passed by relative path so feed.source is the same in every run (golden files)."""
+    monkeypatch.chdir(tmp_path)
+
+
 def overpass(query: str) -> dict:
     if "relation(7)" in query:
         return {"elements": [{"type": "relation", "id": 7, "members": [
@@ -53,7 +58,7 @@ def overpass(query: str) -> dict:
 
 def run(cities_dir, out, make_zip, *extra, fetcher=overpass, now=NOW, fixture="mini_gtfs"):
     argv = ["mini", "--out", str(out), "--cities-dir", str(cities_dir), "--today", TODAY,
-            "--gtfs-file", str(make_zip(fixture)), *extra]
+            "--gtfs-file", make_zip(fixture).name, *extra]
     return main(argv, fetcher=fetcher, now=now)
 
 
@@ -89,7 +94,7 @@ def test_meta_records_feed_validity_source_and_build_timestamp(cities_dir, tmp_p
     assert meta["built_at"] == "2026-10-07T12:00:00+00:00"
     assert meta["reference_date"] == "2026-10-07"
     assert meta["feed"]["valid_from"] == "2026-01-01" and meta["feed"]["valid_to"] == "2027-12-31"
-    assert meta["feed"]["source"].endswith("feed.zip") and meta["feed"]["expired"] is False
+    assert meta["feed"]["source"] == "feed.zip" and meta["feed"]["expired"] is False
 
 
 def test_stats_boundary_basemap_and_lines_assets(cities_dir, tmp_path, make_zip):
@@ -178,6 +183,6 @@ def test_failed_build_keeps_the_previous_output(cities_dir, tmp_path, make_zip, 
 
 def test_missing_city_config_is_a_clear_error(cities_dir, tmp_path, make_zip, capsys):
     argv = ["nowhere", "--out", str(tmp_path / "out"), "--cities-dir", str(cities_dir),
-            "--gtfs-file", str(make_zip("mini_gtfs"))]
+            "--gtfs-file", make_zip("mini_gtfs").name]
     assert main(argv, fetcher=overpass, now=NOW) == 1
     assert "nowhere.json" in capsys.readouterr().err
