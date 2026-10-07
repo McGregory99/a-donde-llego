@@ -1,7 +1,7 @@
 // Served area of the sampling grid, the denominator of every reach percentage.
 //
 // A percentage over the whole bbox is meaningless: the bbox is mostly countryside
-// (about 13% of Valladolid's is reachable at all). The area is the cells inside
+// (only ~13% of a typical city bbox is reachable at all). The area is the cells inside
 // the city boundary when the asset has one, otherwise the cells within the walking
 // radius (max_access_m) of any stop. Mirrors pipeline/adl/stats.py's two scopes.
 import { cellCenter, forEachCellNear } from './grid.js';
