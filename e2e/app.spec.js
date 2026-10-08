@@ -57,27 +57,34 @@ test('clicking the map shows an itinerary and records the destination in the URL
   expect(page.url()).toMatch(/[?&]d=/);
 });
 
-test('invert switches to arrival and keeps the itinerary', async ({ page }) => {
+test('invert swaps the direction and inverting again restores the itinerary', async ({ page }) => {
   await open(page);
   await clickCentre(page);
-  await expect(page.locator('.trip-panel')).toBeVisible();
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
   await page.click('[data-action="invert"]');
   await expect.poll(() => page.url()).toMatch(/dir=arrival/);
+  // The fixture lines only run S1 -> S4, so arriving at S1 from the middle of the map has no transit trip.
   await expect(page.locator('.trip-panel')).toBeVisible();
+  await expect(page.locator('.trip-panel li')).toHaveCount(0);
+  await page.click('[data-action="invert"]');
+  await expect.poll(() => page.url()).not.toMatch(/dir=arrival/);
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
 });
 
 test('a shared URL reproduces the same state in a fresh page', async ({ page, browser }) => {
   await open(page);
   await clickCentre(page);
-  await page.click('[data-action="invert"]');
+  await page.locator('input[type=range]').fill('90');
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   const shared = page.url();
+  expect(shared).toMatch(/max=90/);
   const summary = await page.locator('.trip-panel').innerText();
 
   const other = await (await browser.newContext()).newPage();
   await other.goto(shared);
   await expect(other.locator('.trip-panel li').first()).toBeVisible();
   expect(await other.locator('.trip-panel').innerText()).toBe(summary);
+  expect(await other.locator('input[type=range]').inputValue()).toBe('90');
   expect(other.url()).toBe(shared);
 });
 
@@ -97,4 +104,14 @@ test('the "Acerca de" page lists the credits and links back to the map under the
   await page.getByRole('link', { name: 'Volver al mapa' }).click();
   await expect(page).toHaveURL(/\/a-donde-llego\/\?c=valladolid$/);
   await expect(page.locator('#map')).toBeVisible();
+});
+
+test('the map still loads when stats.json is missing and the stats panel stays hidden', async ({ page }) => {
+  await page.route('**/data/valladolid/stats.json', (route) => route.fulfill({ status: 404, body: 'not found' }));
+  await page.goto(`./?${CITY}&${ORIGIN}`);
+  await expect(page.locator('#map')).toBeVisible();
+  await expect(page.locator('.stats')).toBeHidden();
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
+  consoleErrors.length = 0; // the browser logs the intentional 404
 });
