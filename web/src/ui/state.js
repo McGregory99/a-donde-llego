@@ -4,6 +4,9 @@ import { ISOCHRONE_CHOICES, SCALE } from '../state-url.js';
 
 const inside = ([west, south, east, north], [lat, lon]) => lat >= south && lat <= north && lon >= west && lon <= east;
 
+/** 'walk' when no transit mode is enabled, else 'transit'. */
+export const travelChoice = (state) => (state.modes.length ? 'transit' : 'walk');
+
 /** Next state for `action`; returns the same object when nothing changes. `city` comes from cityDefaults. */
 export function reduce(state, action, city) {
   switch (action.type) {
@@ -19,6 +22,11 @@ export function reduce(state, action, city) {
       const on = state.modes.includes(action.id);
       const modes = city.modes.filter((id) => (id === action.id ? !on : state.modes.includes(id)));
       return { ...state, modes };
+    }
+    case 'travel': {
+      if (action.choice !== 'transit' && action.choice !== 'walk') return state;
+      if (travelChoice(state) === action.choice) return state;
+      return { ...state, modes: action.choice === 'transit' ? [...city.modes] : [] };
     }
     case 'iso': {
       if (!ISOCHRONE_CHOICES.includes(action.minutes)) return state;

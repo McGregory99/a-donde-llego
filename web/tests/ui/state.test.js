@@ -1,7 +1,7 @@
 // View-state reducer (R4.2, R4.4, R4.6, R4.7, R4.3). Pure: no DOM.
 import { describe, expect, it } from 'vitest';
-import { cityDefaults, defaultState } from '../../src/state-url.js';
-import { reduce } from '../../src/ui/state.js';
+import { cityDefaults, defaultState, parseState, serializeState } from '../../src/state-url.js';
+import { reduce, travelChoice } from '../../src/ui/state.js';
 
 const config = {
   id: 'x',
@@ -39,6 +39,21 @@ describe('reduce', () => {
     expect(off.modes).toEqual(city.defaultModes.filter((m) => m !== 'a'));
     expect(reduce(off, { type: 'mode', id: 'a' }, city).modes).toContain('a');
     expect(reduce(start, { type: 'mode', id: 'walk' }, city)).toBe(start);
+  });
+
+  it('travel chooses between every transit mode and walking only, and round-trips through the URL', () => {
+    const walk = reduce(start, { type: 'travel', choice: 'walk' }, city);
+    expect(walk.modes).toEqual([]);
+    expect(travelChoice(walk)).toBe('walk');
+    const transit = reduce(walk, { type: 'travel', choice: 'transit' }, city);
+    expect(transit.modes).toEqual(city.modes);
+    expect(travelChoice(transit)).toBe('transit');
+    expect(reduce(start, { type: 'travel', choice: 'transit' }, city).modes).toEqual(city.modes);
+    expect(reduce(walk, { type: 'travel', choice: 'walk' }, city)).toBe(walk);
+    expect(reduce(start, { type: 'travel', choice: 'nope' }, city)).toBe(start);
+    const query = serializeState(walk);
+    expect(query).toContain('modes=&');
+    expect(parseState(query, city).state.modes).toEqual([]);
   });
 
   it('toggles isochrones among the allowed minutes, keeping them sorted (R4.4)', () => {

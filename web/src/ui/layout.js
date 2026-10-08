@@ -23,12 +23,13 @@ export function buildLayout(root, t = defaultT) {
   ]);
   const legend = el('div', { class: 'legend' });
   const panel = el('aside', { class: 'trip-panel', 'aria-live': 'polite', hidden: '' });
+  const tooltip = el('div', { class: 'stop-tooltip', role: 'tooltip', hidden: '' });
   const toast = el('div', { class: 'toast', role: 'status', hidden: '' });
   const attribution = el('div', { class: 'attribution' });
-  const stage = el('div', { class: 'stage' }, [canvas, zoom, legend, panel, toast, attribution]);
+  const stage = el('div', { class: 'stage' }, [canvas, zoom, legend, panel, tooltip, toast, attribution]);
   const header = el('header', {}, [el('h1', { text: t('app.title') }), el('p', { text: t('app.subtitle') })]);
   const banner = el('div', { class: 'expiry-banner', hidden: '' });
   const stats = el('section', { class: 'stats' });
   root.replaceChildren(header, banner, controls, stage, stats);
-  return { controls, canvas, zoom, legend, panel, toast, stage, banner, stats, attribution };
+  return { controls, canvas, zoom, legend, panel, tooltip, toast, stage, banner, stats, attribution };
 }

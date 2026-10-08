@@ -37,7 +37,8 @@ async function start() {
     t,
   );
 
-  const paintTrip = (state, { trip }) => renderTrip(app.layout.panel, { graph: data.graph, state, trip }, t);
+  const clearDestination = () => app.dispatch({ type: 'destination', point: null });
+  const paintTrip = (state, { trip }) => renderTrip(app.layout.panel, { graph: data.graph, state, trip }, t, clearDestination);
   app.subscribe(paintTrip);
   paintTrip(app.getState(), { trip: app.trip() });
 }

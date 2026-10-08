@@ -119,3 +119,77 @@ test('the map still loads when stats.json is missing and the stats panel stays h
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   consoleErrors.length = 0; // the browser logs the intentional 404
 });
+
+test('the close button removes the destination, the itinerary and the d parameter', async ({ page }) => {
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  expect(page.url()).toMatch(/[?&]d=/);
+  await page.getByRole('button', { name: 'Quitar destino' }).click();
+  await expect(page.locator('.trip-panel')).toBeHidden();
+  expect(page.url()).not.toMatch(/[?&]d=/);
+});
+
+test('Escape removes the destination', async ({ page }) => {
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.trip-panel')).toBeHidden();
+  expect(page.url()).not.toMatch(/[?&]d=/);
+});
+
+test('clicking the arrival marker removes it instead of moving it', async ({ page }) => {
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  await clickCentre(page); // the marker sits where the first click landed
+  await expect(page.locator('.trip-panel')).toBeHidden();
+  expect(page.url()).not.toMatch(/[?&]d=/);
+});
+
+test('"Solo a pie" and back changes the reachable trip and persists in the URL', async ({ page }) => {
+  await open(page);
+  const transit = page.getByRole('radio', { name: /\+ a pie$/ });
+  const walkOnly = page.getByRole('radio', { name: 'Solo a pie' });
+  await expect(transit).toBeChecked();
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
+
+  await walkOnly.check();
+  await expect(walkOnly).toBeChecked();
+  await expect.poll(() => page.url()).toMatch(/modes=&/);
+  await expect(page.locator('.trip-panel li')).toHaveCount(0); // too far to walk
+  await expect(page.locator('.legend')).toContainText('a pie');
+
+  const shared = page.url();
+  await page.goto(shared);
+  await expect(page.getByRole('radio', { name: 'Solo a pie' })).toBeChecked();
+
+  await page.getByRole('radio', { name: /\+ a pie$/ }).check();
+  await expect.poll(() => page.url()).not.toMatch(/modes=&/);
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
+});
+
+test('stops show their name on hover once zoomed in, and stay hidden when zoomed out', async ({ page }) => {
+  await open(page);
+  const tooltip = page.locator('.stop-tooltip');
+  // Sweep synthetic mouse moves over the canvas inside the page (fast); the tooltip appears when one lands on a stop.
+  const sweep = () =>
+    page.evaluate(() => {
+      const canvas = document.getElementById('map');
+      const rect = canvas.getBoundingClientRect();
+      const tip = document.querySelector('.stop-tooltip');
+      for (let y = 4; y < rect.height; y += 8) {
+        for (let x = 4; x < rect.width; x += 8) {
+          canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + x, clientY: rect.top + y, pointerId: 7, pointerType: 'mouse', bubbles: true }));
+          if (!tip.hidden) return true;
+        }
+      }
+      return false;
+    });
+  expect(await sweep()).toBe(false); // zoomed out: no stop is interactive
+  for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
+  expect(await sweep()).toBe(true);
+  await expect(tooltip).toHaveText(/^(One|Two|Three|Four)$/);
+});

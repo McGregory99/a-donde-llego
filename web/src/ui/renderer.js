@@ -2,6 +2,7 @@
 // World coordinates are metres from the projection (x east, y north); the y axis is flipped by the transform.
 import { labelSpot } from './contours.js';
 import { pointInPolygons } from '../core/geo.js';
+import { stopsVisible } from './stops.js';
 import { boundsOf, toScreen } from './view.js';
 
 export const COLORS = {
@@ -18,7 +19,6 @@ export const COLORS = {
 };
 const HEAT_ALPHA = 0.78;
 const FIT_MARGIN_M = 1500; // around the outermost stops in the initial view
-const STOP_DOT_SCALE = 1.6; // zoom (relative to the fit scale) from which stops are drawn
 
 /** Stable pastel-dark colour per line, so neighbouring lines stay distinguishable without city data. */
 export function lineColor(key) {
@@ -230,12 +230,17 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       }
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (view.scale > view.fitScale * STOP_DOT_SCALE) {
-        ctx.fillStyle = 'rgba(40, 40, 40, 0.55)';
+      if (stopsVisible(view)) {
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.8)';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
         for (const world of stops) {
           const [x, y] = toScreen(view, size, world);
           if (x < -4 || y < -4 || x > width + 4 || y > height + 4) continue;
-          ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
         }
       }
       ctx.textAlign = 'center';

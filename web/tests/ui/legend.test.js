@@ -4,12 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { t } from '../../src/i18n.js';
 import { legendModel, renderLegend } from '../../src/ui/legend.js';
 
-const state = { direction: 'departure', scale: 45, isochrones: [15, 30] };
+const state = { direction: 'departure', scale: 45, isochrones: [15, 30], modes: ['road'] };
 
 describe('legendModel', () => {
   it('states the direction (R4.6)', () => {
     expect(legendModel(state).captionKey).toBe('legend.departure');
     expect(legendModel({ ...state, direction: 'arrival' }).captionKey).toBe('legend.arrival');
+  });
+
+  it('says "on foot" when no transit mode is enabled', () => {
+    expect(legendModel({ ...state, modes: [] }).captionKey).toBe('legend.departureWalk');
+    expect(legendModel({ ...state, modes: [], direction: 'arrival' }).captionKey).toBe('legend.arrivalWalk');
+    expect(t('legend.departureWalk')).not.toBe(t('legend.departure'));
   });
 
   it('ticks run from 0 to the scale maximum through the middle', () => {
