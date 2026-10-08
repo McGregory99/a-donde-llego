@@ -67,6 +67,22 @@ describe('street walk legs', () => {
     expect(trip.path.at(-1)).toEqual(across);
   });
 
+  it('arrival with transit: every walk leg path runs from its start to its end', () => {
+    let seen = 0;
+    for (const c of cases.filter((x) => x.enabled === null)) {
+      for (const p of points) {
+        const trip = itinerary(graph, c.origin, p, { enabled: null, reverse: true });
+        if (!trip || !trip.legs.some((l) => l.type === 'ride')) continue;
+        for (const leg of trip.legs.filter((l) => l.type === 'walk')) {
+          seen += 1;
+          expect(leg.path[0]).toEqual(leg.from.point);
+          expect(leg.path.at(-1)).toEqual(leg.to.point);
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(5);
+  });
+
   it('with transit the first and last legs are street walks and carry their path', () => {
     const c = cases.find((x) => x.enabled === null && x.times.some((t) => t !== null));
     let seen = 0;

@@ -179,8 +179,9 @@ function streetItinerary(graph, streets, anchor, point, { enabled, reverse }) {
   if (!reverse) chain.reverse(); // arrival chains already run in travel order
   const first = decode(chain[0], trace.tables).stop;
   const last = decode(chain.at(-1), trace.tables).stop;
-  const head = reverse ? reversePath(pointLeg(first)) : anchorLeg(first);
-  const tail = reverse ? anchorLeg(last) : reversePath(pointLeg(last));
+  // streetLeg paths run free point -> stop: flip the ones walked stop -> free point (the tail).
+  const head = reverse ? pointLeg(first) : anchorLeg(first);
+  const tail = reversePath(reverse ? anchorLeg(last) : pointLeg(last));
   const legs = [
     ...walkLeg(at(null, start), at(first), head),
     ...transitLegs(graph, streets, chain, trace.tables),
