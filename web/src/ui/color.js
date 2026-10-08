@@ -1,14 +1,8 @@
-// Colour ramp of the heat map: near (green) -> far (red), fading out beyond the scale.
-// Ported from the upstream canvas app (web/upstream/site/app.js).
+// Colour ramp of the heat map: near -> far along the active ramp (ramps.js), fading out beyond the scale (raster only).
+import { ACTIVE_RAMP, hexToRgb } from './ramps.js';
 
-// [position in 0..1, [r, g, b]]
-export const PALETTE = [
-  [0, [47, 150, 18]],
-  [0.25, [126, 200, 80]],
-  [0.5, [226, 228, 120]],
-  [0.75, [244, 182, 112]],
-  [1, [226, 120, 120]],
-];
+// [position in 0..1, [r, g, b]] of the active ramp (ramps.js).
+export const PALETTE = ACTIVE_RAMP.stops.map(([position, hex]) => [position, hexToRgb(hex)]);
 
 /** Share of the scale over which the colour fades out beyond its maximum. */
 export const BEYOND_FADE = 0.15;

@@ -63,9 +63,9 @@ const canvasColours = (page) =>
     for (let i = 0; i < data.length; i += 4) {
       const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
       if (i % 97 === 0) counts.distinct.add(`${r},${g},${b}`);
-      if (g > r + 40 && g > b + 60) counts.green += 1; // the near end of the ramp
+      if (g > r - 30 && g > b + 80) counts.green += 1; // the near end of the ramp: yellow-green
       else if (r > g + 60 && r > b + 60) counts.red += 1; // the far end
-      else if (Math.abs(r - g) < 6 && Math.abs(g - b) < 12 && r > 150 && r < 200) counts.grey += 1; // neutral streets
+      else if (Math.abs(r - g) < 6 && Math.abs(g - b) < 14 && r > 190 && r < 236) counts.grey += 1; // neutral streets
     }
     return { ...counts, distinct: counts.distinct.size };
   });
@@ -75,7 +75,7 @@ test('paints streets: travel-time colours on the street segments and the neutral
   for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
   await expect.poll(async () => (await canvasColours(page)).distinct).toBeGreaterThan(3);
   const colours = await canvasColours(page);
-  expect(colours.green).toBeGreaterThan(0); // streets close to the origin are green
+  expect(colours.red).toBeGreaterThan(0); // streets far from the origin are opaque warm ramp colours
   expect(colours.grey).toBeGreaterThan(0); // streets beyond the scale keep the base style
 });
 
@@ -292,3 +292,22 @@ test('mobile: the map fills the screen, the stats start collapsed and nothing ov
   await page.getByRole('button', { name: 'Ver cifras' }).click();
   await expect(page.locator('.stats')).toBeVisible();
 });
+
+// Contours are closed lines drawn at every zoom (no zoom threshold), in both travel modes. The label is canvas text, so
+// the observable effect of a toggle is a change of the canvas pixels. Walking alone only reaches ~13 min of streets
+// (max_access_m), so its front is the 15 min one; with the bus the 45 min one is inside the fixture's reach.
+for (const [name, query, minutes] of [
+  ['Autobús + a pie', `${CITY}&${ORIGIN}&iso=60&max=90`, 45],
+  ['Solo a pie', `${CITY}&${ORIGIN}&modes=&iso=60&max=90`, 15],
+]) {
+  test(`"${name}": toggling the ${minutes} min isochrone changes the map at the default zoom`, async ({ page }) => {
+    await open(page, query);
+    const snapshot = () => page.locator('#map').screenshot();
+    const before = await snapshot();
+    await page.locator(`input[data-iso="${minutes}"]`).check();
+    await expect.poll(async () => !(await snapshot()).equals(before)).toBe(true);
+    const during = await snapshot();
+    await page.locator(`input[data-iso="${minutes}"]`).uncheck();
+    await expect.poll(async () => !(await snapshot()).equals(during)).toBe(true);
+  });
+}
