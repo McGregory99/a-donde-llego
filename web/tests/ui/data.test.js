@@ -1,6 +1,6 @@
 // Loading the static assets of a city (R2.6, R4.10); fetch is injected, tests never touch the network.
 import { describe, expect, it, vi } from 'vitest';
-import { DataError, loadCityData } from '../../src/ui/data.js';
+import { DataError, loadCityAssets, loadCityData } from '../../src/ui/data.js';
 
 const assets = {
   meta: { city: { id: 'x' } },
@@ -8,6 +8,7 @@ const assets = {
   lines: { lines: [] },
   boundary: { polygons: [] },
   basemap: { water: [], parks: [] },
+  stats: { stops: 0 },
 };
 const ok = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body });
 
@@ -36,5 +37,14 @@ describe('loadCityData', () => {
       fetch: () => Promise.resolve({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } }),
     }).catch((e) => e);
     expect(badJson).toBeInstanceOf(DataError);
+  });
+});
+
+describe('loadCityAssets', () => {
+  it('fetches only the named assets (the about page needs just meta)', async () => {
+    const fetch = vi.fn((url) => ok(assets[url.split('/').pop().replace('.json', '')]));
+    const loaded = await loadCityAssets('x', ['meta'], { fetch, base: '/data/' });
+    expect(loaded).toEqual({ meta: assets.meta });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/data/x/meta.json']);
   });
 });
