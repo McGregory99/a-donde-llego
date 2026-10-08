@@ -7,7 +7,7 @@ import { formatDate, renderExpiryBanner, renderStats } from '../../src/ui/stats.
 const stats = (overrides = {}) => ({
   built_on: '2026-10-07',
   feed: { expired: false, valid_from: '2026-10-07', valid_to: '2026-12-27' },
-  headway: { overall_median_min: 52, by_line: [] },
+  headway: { median_by_line_min: 24, best_min: 8, by_line: [] },
   lines: 58,
   reach: { origins: 1, percent_stops: 61.2, scope: 'boundary', threshold_min: 30 },
   stops: 566,
@@ -28,11 +28,12 @@ describe('formatDate', () => {
 });
 
 describe('renderStats', () => {
-  it('shows reach, median headway, stops, lines and the feed validity from the build', () => {
+  it('shows reach, line headways, stops, lines and the feed validity from the build', () => {
     const container = panel(stats());
     expect(container.querySelector('h2').textContent).toBe(t('stats.title'));
     expect(row(container, 'reach')).toBe('61,2 %');
-    expect(row(container, 'headway')).toBe('52 min');
+    expect(row(container, 'headway')).toBe('24 min');
+    expect(row(container, 'bestHeadway')).toBe('8 min');
     expect(row(container, 'stops')).toBe('566');
     expect(row(container, 'lines')).toBe('58');
     expect(row(container, 'validity')).toBe(t('stats.validity', { from: '07/10/2026', to: '27/12/2026' }));
@@ -63,6 +64,39 @@ describe('renderStats', () => {
     renderStats(container, stats({ stops: 10 }), t);
     expect(container.querySelectorAll('h2')).toHaveLength(1);
     expect(row(container, 'stops')).toBe('10');
+  });
+});
+
+describe('renderStats with missing or malformed stats', () => {
+  it('hides and empties the panel when there are no stats (the asset is optional)', () => {
+    const container = panel(stats());
+    renderStats(container, null, t);
+    expect(container.hidden).toBe(true);
+    expect(container.textContent).toBe('');
+  });
+
+  it.each([
+    ['no reach', { reach: undefined }],
+    ['non-numeric percentage', { reach: { origins: 1, percent_stops: '61', scope: 'boundary', threshold_min: 30 } }],
+    ['no headway block', { headway: undefined }],
+    ['legacy headway without the new fields', { headway: { overall_median_min: 52, by_line: [] } }],
+    ['NaN headway', { headway: { median_by_line_min: NaN, best_min: 8, by_line: [] } }],
+    ['no feed', { feed: undefined }],
+    ['feed without dates', { feed: { expired: false } }],
+    ['unknown reach scope', { reach: { origins: 1, percent_stops: 61, scope: 'moon', threshold_min: 30 } }],
+  ])('hides the panel instead of throwing: %s', (_name, overrides) => {
+    const container = panel(stats());
+    expect(() => renderStats(container, stats(overrides), t)).not.toThrow();
+    expect(container.hidden).toBe(true);
+    expect(container.textContent).toBe('');
+  });
+
+  it('shows the panel again once valid stats arrive', () => {
+    const container = panel(null);
+    expect(container.hidden).toBe(true);
+    renderStats(container, stats(), t);
+    expect(container.hidden).toBe(false);
+    expect(row(container, 'stops')).toBe('566');
   });
 });
 

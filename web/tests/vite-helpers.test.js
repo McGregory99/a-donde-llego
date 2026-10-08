@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { cleanStaleAssets, resolveDataFile } from '../../scripts/vite-helpers.mjs';
+import { cleanStaleAssets, resolveBase, resolveDataFile } from '../../scripts/vite-helpers.mjs';
 
 const root = resolve('/srv/dist/data');
 
@@ -42,5 +42,25 @@ describe('cleanStaleAssets', () => {
   it('is a no-op when there is nothing to clean', () => {
     const out = mkdtempSync(join(tmpdir(), 'adl-dist-'));
     expect(() => cleanStaleAssets(out)).not.toThrow();
+  });
+});
+
+describe('resolveBase', () => {
+  it('defaults to the site root', () => {
+    expect(resolveBase({})).toBe('/');
+  });
+
+  it('normalises the configured base to /segment/ (workflow passes it as an env variable)', () => {
+    expect(resolveBase({ ADL_BASE: '/a-donde-llego/' })).toBe('/a-donde-llego/');
+    expect(resolveBase({ ADL_BASE: 'a-donde-llego' })).toBe('/a-donde-llego/');
+    expect(resolveBase({ ADL_BASE: '/x' })).toBe('/x/');
+    expect(resolveBase({ ADL_BASE: '' })).toBe('/');
+  });
+});
+
+describe('vite.config.js', () => {
+  it('targets browsers with top-level await, which acerca.js uses', async () => {
+    const config = (await import('../../vite.config.js')).default;
+    expect(config.build.target).toBe('es2022');
   });
 });
