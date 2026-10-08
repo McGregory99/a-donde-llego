@@ -84,3 +84,29 @@ describe('two pointers', () => {
     expect(g.up(1, [100, 100])).toBeNull();
   });
 });
+
+describe('interrupted marker drags', () => {
+  it('a second finger during a marker drag ends the drag so the app can restore full quality', () => {
+    const g = createGestures();
+    g.down(1, [102, 100], 'touch', markers);
+    g.move(1, [140, 120]);
+    expect(g.down(2, [300, 300], 'touch', markers)).toEqual({ type: 'drag-end', key: 'origin' });
+    expect(g.move(2, [320, 300])).toEqual({ type: 'pinch', factor: expect.any(Number), center: expect.any(Array) });
+  });
+
+  it('a second finger during a pan or pinch interrupts nothing', () => {
+    const g = createGestures();
+    expect(g.down(1, [50, 50], 'touch', markers)).toBeNull();
+    expect(g.down(2, [80, 50], 'touch', markers)).toBeNull();
+  });
+
+  it('cancelling a marker drag reports its end; cancelling a pan reports nothing', () => {
+    const g = createGestures();
+    g.down(1, [102, 100], 'mouse', markers);
+    g.move(1, [140, 120]);
+    expect(g.cancel(1)).toEqual({ type: 'drag-end', key: 'origin' });
+    g.down(2, [50, 50], 'mouse', markers);
+    g.move(2, [90, 50]);
+    expect(g.cancel(2)).toBeNull();
+  });
+});
