@@ -25,6 +25,13 @@ function decode(node, tables) {
   return { kind: isR ? 'R' : 'B', stop: Math.floor(key / lines), line: key % lines };
 }
 
+/** Minutes of the edge towards `target` in `edges` ([target, minutes] pairs); throws a clear error if absent. */
+export function edgeMinutes(edges, target, label) {
+  const edge = edges?.find(([next]) => next === target);
+  if (!edge) throw new Error(`itinerary: inconsistent graph, missing edge (${label})`);
+  return edge[1];
+}
+
 /** Nodes from `node` back to its root, via predecessors. */
 function chainOf(parent, node) {
   const chain = [];
@@ -46,7 +53,7 @@ function transitLegs(graph, nodes, tables) {
     if (a.kind === 'S') {
       legs.push({ type: 'wait', minutes: tables.wait[b.stop * lines + b.line], stop: b.stop, line: b.line });
     } else if (b.kind === 'R' && a.line === b.line) {
-      const hop = tables.rideFrom.get(a.stop * lines + a.line).find(([next]) => next === b.stop)[1];
+      const hop = edgeMinutes(tables.rideFrom.get(a.stop * lines + a.line), b.stop, `ride ${a.stop} -> ${b.stop}`);
       const last = legs.at(-1);
       if (last?.type === 'ride' && last.line === a.line && last.to === a.stop) {
         last.minutes += hop;
@@ -57,7 +64,7 @@ function transitLegs(graph, nodes, tables) {
       }
     } else {
       // R(s, l) -> B(t, o): alight, walk to t, pay o's penalty, then wait for o.
-      const walk = a.stop === b.stop ? 0 : graph.neighbors[a.stop].find(([j]) => j === b.stop)[1];
+      const walk = a.stop === b.stop ? 0 : edgeMinutes(graph.neighbors[a.stop], b.stop, `walk ${a.stop} -> ${b.stop}`);
       const penalty = tables.penalty[b.line];
       legs.push({
         type: 'transfer', minutes: penalty + walk, walkMinutes: walk, penaltyMinutes: penalty,
