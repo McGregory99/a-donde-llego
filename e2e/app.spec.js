@@ -80,16 +80,19 @@ test('a shared URL reproduces the same state in a fresh page', async ({ page, br
   expect(shared).toMatch(/max=90/);
   const summary = await page.locator('.trip-panel').innerText();
 
-  const other = await (await browser.newContext()).newPage();
+  const context = await browser.newContext();
+  const other = await context.newPage();
   await other.goto(shared);
   await expect(other.locator('.trip-panel li').first()).toBeVisible();
   expect(await other.locator('.trip-panel').innerText()).toBe(summary);
   expect(await other.locator('input[type=range]').inputValue()).toBe('90');
   expect(other.url()).toBe(shared);
+  await context.close();
 });
 
 test('an invalid link shows a notice and falls back to the defaults', async ({ page }) => {
-  await page.goto(`./?${CITY}&o=10,10&iso=99`);
+  await page.goto(`./${CITY}&o=10,10&iso=99`);
+  expect(page.url()).toMatch(/\/\?c=valladolid&/);
   await expect(page.locator('.toast')).toBeVisible();
   await expect(page.locator('.toast')).toContainText('enlace');
   await expect(page.locator('#map')).toBeVisible();
@@ -108,7 +111,8 @@ test('the "Acerca de" page lists the credits and links back to the map under the
 
 test('the map still loads when stats.json is missing and the stats panel stays hidden', async ({ page }) => {
   await page.route('**/data/valladolid/stats.json', (route) => route.fulfill({ status: 404, body: 'not found' }));
-  await page.goto(`./?${CITY}&${ORIGIN}`);
+  await page.goto(`./${CITY}&${ORIGIN}`);
+  expect(page.url()).toMatch(/\/\?c=valladolid&/);
   await expect(page.locator('#map')).toBeVisible();
   await expect(page.locator('.stats')).toBeHidden();
   await clickCentre(page);
