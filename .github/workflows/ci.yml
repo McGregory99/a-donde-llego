@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv run pytest
+      - run: uv run --locked pytest
 
   web:
     runs-on: ubuntu-latest
@@ -28,7 +28,7 @@ jobs:
       - run: npx vitest run
 
   # City-config schema validation runs as its own Node step (no Python
-  # subprocess boundary). The validator script lands with the city-config slice.
+  # subprocess boundary). A missing validator fails the job; it never skips.
   schema:
     runs-on: ubuntu-latest
     steps:
@@ -39,9 +39,4 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Validate city configs against schema
-        run: |
-          if [ -f scripts/validate-cities.mjs ]; then
-            node scripts/validate-cities.mjs
-          else
-            echo "No city-config validator yet; skipping."
-          fi
+        run: node scripts/validate-cities.mjs
