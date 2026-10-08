@@ -93,3 +93,37 @@ def test_riding_keeps_its_semantics_when_streets_are_straight():
         for x, y in zip(a[:4], b[:4]):
             assert y == pytest.approx(x, abs=0.25) if x is not None else y is None
         assert b[4] is None  # 600 m off the street: no street to walk on
+
+
+def test_street_walking_ignores_the_detour_factor():
+    """Street metres are already the real path: detour_factor only inflates straight-line walks."""
+    far = {"A": at(0, 5000), "B": at(3000, 5000)}
+    trips = six_an_hour("L", "A", "B", 5)
+    avenue = streets_of([(-1500, 0), (0, 0), (1500, 0)])
+    plain = build(far, trips, avenue)
+    padded = build(far, trips, avenue, detour_factor=1.5)
+    target = [at(600, 0)]
+    assert travel_times(padded, at(0, 0), target, set()) == travel_times(plain, at(0, 0), target, set())
+    assert travel_times(padded, at(0, 0), target, set())[0] == pytest.approx(600 / 75, abs=0.05)
+    straight = build(far, trips, None, network="straight", detour_factor=1.5)
+    assert travel_times(straight, at(0, 0), target, set())[0] == pytest.approx(600 * 1.5 / 75, abs=0.05)
+
+
+def test_transfer_neighbour_minutes_are_street_metres_over_speed():
+    stops = {"A": at(-3000, 0), "C": at(0, 0), "D": at(300, 0), "B": at(3000, 5000)}
+    trips = six_an_hour("L", "A", "C", 5) + six_an_hour("M", "D", "B", 5)
+    street = streets_of([(-100, 0), (400, 0)])
+    graph = build(stops, trips, street, detour_factor=1.4)
+    c, d = idx(graph, "C"), idx(graph, "D")
+    ((j, minutes),) = [n for n in graph.neighbors[c] if n[0] == d]
+    snap_c, snap_d = graph.stop_snaps[c][1], graph.stop_snaps[d][1]
+    along = 300  # C and D snap onto street nodes 300 m apart (nodes every <= 20 m, spaced on the line)
+    assert minutes == pytest.approx((snap_c + snap_d + along) / 75, abs=0.1)
+
+
+def test_streets_walk_exports_the_resolved_snap_distance():
+    far = {"A": at(0, 5000), "B": at(3000, 5000)}
+    graph = build(far, six_an_hour("L", "A", "B", 5), streets_of([(0, 0), (500, 0)]))
+    assert graph.walk["max_snap_m"] == 150.0
+    custom = build(far, six_an_hour("L", "A", "B", 5), streets_of([(0, 0), (500, 0)]), max_snap_m=80)
+    assert custom.walk["max_snap_m"] == 80

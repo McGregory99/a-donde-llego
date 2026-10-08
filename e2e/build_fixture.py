@@ -1,4 +1,4 @@
-"""Builds the e2e data set: the Valladolid city config over the tiny committed GTFS fixture, no network.
+"""Builds the e2e data set: the Valladolid city config (OSM data from the committed cache) over the tiny committed GTFS fixture, no network.
 
 Usage (repo root): PYTHONPATH=pipeline uv run --locked python e2e/build_fixture.py [OUT]
 OUT defaults to dist-e2e/data. The build date is fixed so the run never depends on the clock.
@@ -27,4 +27,4 @@ if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "dist-e2e" / "data")
     with tempfile.TemporaryDirectory() as tmp:
         feed = zip_feed(FEED_DIR, Path(tmp) / "mini_gtfs.zip")
-        sys.exit(main(["valladolid", "--gtfs-file", str(feed), "--skip-osm", "--out", out, "--today", BUILD_DATE]))
+        sys.exit(main(["valladolid", "--gtfs-file", str(feed), "--out", out, "--today", BUILD_DATE]))

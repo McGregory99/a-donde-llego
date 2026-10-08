@@ -5,8 +5,9 @@
 // with nothing ridden yet, R(stop, line) after at least one ride hop. Only R nodes
 // can egress or transfer, so a stop is never a walking shortcut and every line
 // change pays the transfer penalty.
-import { distanceM, walkMinutes } from './geo.js';
+import { DEFAULT_MAX_SNAP_M, distanceM, streetMinutes, walkMinutes } from './geo.js';
 import { MinHeap } from './heap.js';
+import { nearestNode, reach } from './streets.js';
 
 const prepared = new WeakMap();
 
@@ -53,7 +54,41 @@ function prepare(graph, enabled) {
   return tables;
 }
 
+/** The decoded street graph when the city walks along streets (walk.network "streets"), else null. */
+export function streetsOf(graph) {
+  if (graph.walk.network !== 'streets') return null;
+  if (!graph.streets) throw new Error('walk network "streets" needs the decoded street graph (graph.streets)');
+  return graph.streets;
+}
+
+export const maxSnapOf = (walk) => walk.max_snap_m ?? DEFAULT_MAX_SNAP_M;
+
+/** Street metres walked from a point snapped to the network: { node, metres }[] reached within max_access_m. */
+function streetWalk(streets, walk, snap) {
+  if (!snap || snap.metres > walk.max_access_m) return null;
+  const found = reach(streets, snap.node, walk.max_access_m - snap.metres);
+  const metres = found.dist.map((d) => snap.metres + d);
+  return { nodes: found.nodes, metres };
+}
+
+/** [stop, minutes] pairs walkable from (or to) `point` along streets, as in graph.py `travel_times`. */
+function accessibleStreetStops(graph, streets, point) {
+  const { walk } = graph;
+  const walked = streetWalk(streets, walk, nearestNode(streets, point, maxSnapOf(walk)));
+  const out = [];
+  if (!walked) return out;
+  walked.nodes.forEach((node, k) => {
+    for (const stop of streets.stopsAt.get(node) ?? []) {
+      const metres = walked.metres[k] + streets.stopSnap[stop];
+      if (metres <= walk.max_access_m) out.push([stop, streetMinutes(metres, walk)]);
+    }
+  });
+  return out.sort((a, b) => a[0] - b[0]);
+}
+
 function accessibleStops(graph, point) {
+  const streets = streetsOf(graph);
+  if (streets) return accessibleStreetStops(graph, streets, point);
   const out = [];
   graph.stops.forEach((s, i) => {
     const d = distanceM(point, [s.lat, s.lon]);
@@ -151,11 +186,65 @@ export function stopTimes(graph, point, options = {}) {
 }
 
 /**
+ * Calls `visit(node, metres, base)` for every street node a traveller can walk to from `origin` (base 0)
+ * or from a stop reached after `base` minutes, with `metres` walked along streets (snaps included).
+ */
+function forEachStreetWalk(graph, streets, origin, viaStop, visit) {
+  const { walk } = graph;
+  const walked = streetWalk(streets, walk, nearestNode(streets, origin, maxSnapOf(walk)));
+  if (walked) walked.nodes.forEach((node, k) => visit(node, walked.metres[k], 0));
+  graph.stops.forEach((_, stop) => {
+    if (viaStop[stop] === Infinity || streets.stopNode[stop] < 0) return;
+    const from = streetWalk(streets, walk, { node: streets.stopNode[stop], metres: streets.stopSnap[stop] });
+    if (from) from.nodes.forEach((node, k) => visit(node, from.metres[k], viaStop[stop]));
+  });
+}
+
+/**
+ * Minutes to walk-and-ride from `origin` to every street node (reverse: from each node to `origin`);
+ * Infinity when it is out of reach. A node is reached on foot from the origin or from a stop within
+ * max_access_m of street metres, exactly as graph.py does for a point lying on that node.
+ */
+export function nodeTimes(graph, origin, { enabled = null, reverse = false } = {}) {
+  const streets = streetsOf(graph);
+  const viaStop = stopTimes(graph, origin, { enabled, reverse });
+  const times = new Float64Array(streets.n).fill(Infinity);
+  forEachStreetWalk(graph, streets, origin, viaStop, (node, metres, base) => {
+    if (metres > graph.walk.max_access_m) return;
+    const minutes = base + streetMinutes(metres, graph.walk);
+    if (minutes < times[node]) times[node] = minutes;
+  });
+  return times;
+}
+
+function streetPointTimes(graph, streets, origin, points, viaStop) {
+  const { walk } = graph;
+  const snap = maxSnapOf(walk);
+  const atNode = new Map();
+  points.forEach((p, index) => {
+    const found = nearestNode(streets, p, snap);
+    if (!found) return;
+    const list = atNode.get(found.node);
+    if (list) list.push([index, found.metres]);
+    else atNode.set(found.node, [[index, found.metres]]);
+  });
+  const best = new Array(points.length).fill(Infinity);
+  forEachStreetWalk(graph, streets, origin, viaStop, (node, metres, base) => {
+    for (const [index, snapM] of atNode.get(node) ?? []) {
+      if (metres + snapM <= walk.max_access_m) best[index] = Math.min(best[index], base + streetMinutes(metres + snapM, walk));
+    }
+  });
+  return best.map((b) => (b === Infinity ? null : b));
+}
+
+/**
  * Minutes from `origin` to each point (reverse: from each point to `origin`);
  * null when unreachable. `enabled` lists the transit modes in use (null: all).
  */
 export function travelTimes(graph, origin, points, { enabled = null, reverse = false } = {}) {
   const viaStop = stopTimes(graph, origin, { enabled, reverse });
+  const streets = streetsOf(graph);
+  if (streets) return streetPointTimes(graph, streets, origin, points, viaStop);
   const { walk } = graph;
   return points.map((p) => {
     let best = Infinity;

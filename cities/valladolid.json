@@ -24,7 +24,7 @@
     }
   ],
   "modes": {
-    "walk": { "kind": "walk", "speed_m_per_min": 75, "detour_factor": 1.0, "max_access_m": 1000 },
+    "walk": { "kind": "walk", "network": "streets", "speed_m_per_min": 75, "detour_factor": 1.0, "max_access_m": 1000 },
     "bus": {
       "kind": "transit",
       "route_types": [3],

@@ -41,7 +41,7 @@
     "arrivalWalk": "Tiempo a pie hasta el punto de llegada",
     "minutes": "{minutes} min",
     "beyond": "Más de {minutes} min",
-    "contours": "Líneas negras: isócronas"
+    "contours": "En negro: isócronas"
   },
   "itinerary": {
     "title": "Itinerario",
@@ -81,6 +81,7 @@
     "show": "Ver cifras",
     "hide": "Ocultar cifras",
     "reach": "Paradas a menos de {minutes} min del centro",
+    "reachStreets": "Calles a menos de {minutes} min del centro",
     "percent": "{value} %",
     "minutes": "{value} min",
     "headway": "Una línea típica pasa cada",
@@ -93,6 +94,7 @@
     "definitionsTitle": "Cómo se calcula",
     "reachDefinition": {
       "boundary": "Porcentaje de las paradas situadas dentro del límite municipal a las que se llega en {minutes} min o menos, saliendo del centro de la ciudad en un día laborable típico.",
+      "streets": "Porcentaje de los cruces y tramos de calle del municipio a los que se llega en {minutes} min o menos, a pie y en autobús, saliendo del centro de la ciudad en un día laborable típico. Solo cuentan las calles transitables a pie, y la caminata sigue su trazado real.",
       "served": "Porcentaje de las paradas de la red a las que se llega en {minutes} min o menos, saliendo del centro de la ciudad en un día laborable típico."
     },
     "reachOrigins": "Es el promedio de {count} puntos de salida de referencia.",

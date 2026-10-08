@@ -25,14 +25,17 @@ Requires Node 22+ and [uv](https://docs.astral.sh/uv/) (Python 3.12).
 ```sh
 npm ci && uv sync --locked
 
-# Build the data for a city into dist/data/<city>/ (downloads the feed and OSM data)
+# Build the data for a city into dist/data/<city>/ (downloads the feed; OSM data comes from the committed cache)
 PYTHONPATH=pipeline uv run --locked python -m adl.build valladolid
-# Offline variants: --gtfs-file feed.zip --skip-osm; --allow-expired is for local work only
-# If Overpass is down the build falls back to the committed cache in cities/osm-cache/<city>/
-# (meta.json records "osm": {"source": "live" | "cache" | "skipped"}). Refresh it from live Overpass and commit:
+# OSM data (boundary, basemap, streets) is read from cities/osm-cache/<city>/ by default: live Overpass is slow
+# (the streets alone are ~36 tiles, ~19 min). --refresh-osm (or ADL_REFRESH_OSM=1) goes live instead and still
+# falls back to the cache if Overpass is down. meta.json records "osm": {"source": "live" | "cache" | "skipped"}.
+# Offline variants: --gtfs-file feed.zip; --skip-osm (not for a streets city); --allow-expired is for local work only.
+# Refresh the cache from live Overpass and commit it (the deploy workflow can do the same, see below):
 PYTHONPATH=pipeline uv run --locked python -m adl.osm_cache valladolid
 # The cache also holds the pedestrian ways (streets.json) behind dist/data/<city>/walk.json, the street graph
 # (nodes, edges with metres, shape and road class). A walk mode with "network": "streets" walks along it.
+# The deploy workflow uses the committed cache; run it manually with "refresh_osm" ticked to refresh live.
 
 npx vite                         # dev server (serves dist/data under /data)
 npx vitest run                   # web unit tests

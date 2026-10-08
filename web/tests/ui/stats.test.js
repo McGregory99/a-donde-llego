@@ -53,6 +53,18 @@ describe('renderStats', () => {
     expect(row(container, 'reach')).toBe('80 %');
   });
 
+  it('with walking on streets the headline is the share of street nodes, defined as such', () => {
+    const container = panel(stats({ reach: { origins: 1, percent_stops: 51.9, percent_nodes: 30.8, scope: 'streets', threshold_min: 30 } }));
+    expect(row(container, 'reach')).toBe('30,8 %');
+    expect(container.querySelector('dt').textContent).toBe(t('stats.reachStreets', { minutes: 30 }));
+    expect(container.textContent).toContain(t('stats.reachDefinition.streets', { minutes: 30 }));
+    expect(t('stats.reachDefinition.streets', { minutes: 30 })).toMatch(/calles|cruces/);
+  });
+
+  it('the street scope needs its own figure: a streets stats.json without percent_nodes is unusable', () => {
+    expect(panel(stats({ reach: { origins: 1, percent_stops: 51.9, scope: 'streets', threshold_min: 30 } })).hidden).toBe(true);
+  });
+
   it('mentions averaging when several reference origins were used', () => {
     expect(panel(stats()).textContent).not.toContain(t('stats.reachOrigins', { count: 3 }));
     const many = panel(stats({ reach: { origins: 3, percent_stops: 50, scope: 'boundary', threshold_min: 30 } }));
