@@ -43,10 +43,22 @@ def test_threshold_and_multiple_origins_average():
     assert result["reach"]["percent_stops"] == 50.0  # 50% from each origin
 
 
-def test_headway_is_median_per_line_and_overall():
+def test_headway_is_median_per_line_then_median_across_lines():
     result = stats()["headway"]
-    assert result["overall_median_min"] == 10.0
+    assert result["median_by_line_min"] == 10.0
+    assert result["best_min"] == 10.0
     assert {l["id"]: l["median_min"] for l in result["by_line"]} == {"L1:0": 10.0, "L2:0": 10.0}
+    assert "overall_median_min" not in result
+
+
+def test_a_line_counts_once_however_many_stops_it_has():
+    # line 0 has 3 stop pairs at 10 min, line 1 has 2 at 60 min: pairs would give 10, lines give 35.
+    graph = toy_graph()
+    graph.headways.clear()
+    graph.headways.update({(0, 0): 10.0, (1, 0): 10.0, (2, 0): 10.0, (3, 1): 60.0, (4, 1): 60.0})
+    result = stats(graph)["headway"]
+    assert result["median_by_line_min"] == 35.0
+    assert result["best_min"] == 10.0
 
 
 def test_counts_and_feed_validity_and_build_date_are_recorded():

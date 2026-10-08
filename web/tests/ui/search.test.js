@@ -1,0 +1,171 @@
+// @vitest-environment jsdom
+// R6.1-R6.4, R6.6: address search with suggestions, outside/no-result notes, non-blocking errors.
+import { describe, expect, it, vi } from 'vitest';
+import { t } from '../../src/i18n.js';
+import { GeocoderError } from '../../src/geocoder/index.js';
+import { createSearch } from '../../src/ui/search.js';
+
+const place = (label, lat = 41.65, lon = -4.72) => ({ label, lat, lon });
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+let container;
+
+function setup(geocoder) {
+  container = document.createElement('div');
+  document.body.replaceChildren(container);
+  const onSelect = vi.fn();
+  const onError = vi.fn();
+  const search = createSearch(container, { geocoder, t, onSelect, onError });
+  const input = container.querySelector('input');
+  const type = async (value) => {
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    await tick();
+  };
+  return { search, input, onSelect, onError, type };
+}
+
+describe('createSearch', () => {
+  it('labels the input from translations', () => {
+    setup({ suggest: vi.fn(), search: vi.fn() });
+    const input = container.querySelector('input');
+    expect(input.placeholder).toBe(t('controls.searchPlaceholder'));
+    expect(input.getAttribute('aria-label')).toBe(t('controls.search'));
+  });
+
+  it('lists suggestions from suggest() as buttons', async () => {
+    const geocoder = { suggest: vi.fn(async () => ({ results: [place('A'), place('B')], outside: 0 })), search: vi.fn() };
+    const { type } = setup(geocoder);
+    await type('Calle');
+    expect(geocoder.suggest).toHaveBeenCalledWith('Calle');
+    expect([...container.querySelectorAll('.search-results button')].map((b) => b.textContent)).toEqual(['A', 'B']);
+  });
+
+  it('selecting a suggestion reports it, fills the input and closes the list (R6.3)', async () => {
+    const geocoder = { suggest: vi.fn(async () => ({ results: [place('A')], outside: 0 })), search: vi.fn() };
+    const { type, onSelect, input } = setup(geocoder);
+    await type('Calle');
+    container.querySelector('.search-results button').click();
+    expect(onSelect).toHaveBeenCalledWith(place('A'));
+    expect(input.value).toBe('A');
+    expect(container.querySelector('.search-results').hidden).toBe(true);
+  });
+
+  it('notes hidden outside results and an empty answer (R6.4)', async () => {
+    const outside = { suggest: vi.fn(async () => ({ results: [place('A')], outside: 2 })), search: vi.fn() };
+    const first = setup(outside);
+    await first.type('Calle');
+    expect(container.textContent).toContain(t('controls.resultsOutside', { count: 2 }));
+    const empty = setup({ suggest: vi.fn(async () => ({ results: [], outside: 0 })), search: vi.fn() });
+    await empty.type('zzz');
+    expect(container.textContent).toContain(t('controls.noResults'));
+  });
+
+  it('ignores a superseded (null) answer', async () => {
+    const { type } = setup({ suggest: vi.fn(async () => null), search: vi.fn() });
+    await type('Calle');
+    expect(container.querySelector('.search-results').hidden).toBe(true);
+  });
+
+  it('shortens nothing below the minimum: short input clears the list without calling the geocoder', async () => {
+    const geocoder = { suggest: vi.fn(async () => ({ results: [place('A')], outside: 0 })), search: vi.fn() };
+    const { type } = setup(geocoder);
+    await type('Ca');
+    expect(geocoder.suggest).not.toHaveBeenCalled();
+  });
+
+  it('reports geocoder failures by key without throwing (R6.6)', async () => {
+    const failing = { suggest: vi.fn(async () => { throw new GeocoderError('errors.geocoderRateLimit'); }), search: vi.fn() };
+    const { type, onError } = setup(failing);
+    await type('Calle');
+    expect(onError).toHaveBeenCalledWith('errors.geocoderRateLimit');
+  });
+
+  it('submitting picks the first result of a full search', async () => {
+    const geocoder = { suggest: vi.fn(), search: vi.fn(async () => ({ results: [place('First'), place('Second')], outside: 0 })) };
+    const { input, onSelect } = setup(geocoder);
+    input.value = 'Plaza Mayor';
+    container.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect(geocoder.search).toHaveBeenCalledWith('Plaza Mayor');
+    expect(onSelect).toHaveBeenCalledWith(place('First'));
+  });
+
+  it('shows the no-results note when a submitted search finds nothing', async () => {
+    const geocoder = { suggest: vi.fn(), search: vi.fn(async () => ({ results: [], outside: 0 })) };
+    const { input, onSelect } = setup(geocoder);
+    input.value = 'zzzz';
+    container.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(t('controls.noResults'));
+  });
+
+  it('reports a failing submitted search by key', async () => {
+    const geocoder = { suggest: vi.fn(), search: vi.fn(async () => { throw new GeocoderError('errors.geocoderTimeout'); }) };
+    const { input, onSelect, onError } = setup(geocoder);
+    input.value = 'Plaza Mayor';
+    container.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect(onError).toHaveBeenCalledWith('errors.geocoderTimeout');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the generic key for an error without one', async () => {
+    const geocoder = { suggest: vi.fn(), search: vi.fn(async () => { throw new Error('boom'); }) };
+    const { input, onError } = setup(geocoder);
+    input.value = 'Plaza Mayor';
+    container.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect(onError).toHaveBeenCalledWith('errors.geocoder');
+  });
+
+  it('ignores a superseded (null) submitted search', async () => {
+    const geocoder = { suggest: vi.fn(), search: vi.fn(async () => null) };
+    const { input, onSelect, onError } = setup(geocoder);
+    input.value = 'Plaza Mayor';
+    container.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('discards suggestions whose query no longer matches the input', async () => {
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    const geocoder = { suggest: vi.fn(() => pending), search: vi.fn() };
+    const { input } = setup(geocoder);
+    input.value = 'Calle';
+    input.dispatchEvent(new Event('input'));
+    input.value = 'Ca';
+    input.dispatchEvent(new Event('input'));
+    release({ results: [place('Stale')], outside: 0 });
+    await tick();
+    expect(container.querySelector('.search-results').hidden).toBe(true);
+    expect(container.querySelectorAll('.search-results button')).toHaveLength(0);
+  });
+
+  it('discards a submitted result when the input changed meanwhile', async () => {
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    const geocoder = { suggest: vi.fn(), search: vi.fn(() => pending) };
+    const { input, onSelect } = setup(geocoder);
+    input.value = 'Plaza Mayor';
+    container.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    input.value = 'Calle Santiago';
+    release({ results: [place('Stale')], outside: 0 });
+    await tick();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('returns a teardown that removes the document click listener', async () => {
+    const geocoder = { suggest: vi.fn(async () => ({ results: [place('A')], outside: 0 })), search: vi.fn() };
+    const first = setup(geocoder);
+    await first.type('Calle');
+    document.body.click();
+    expect(container.querySelector('.search-results').hidden).toBe(true);
+    await first.type('Calle');
+    first.search.destroy();
+    document.body.click();
+    expect(container.querySelector('.search-results').hidden).toBe(false);
+  });
+});

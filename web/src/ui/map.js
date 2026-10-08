@@ -45,12 +45,19 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
     requestRender();
   }
 
+  const endDrag = (action) => {
+    if (action?.type === 'drag-end') handlers.onDragEnd(action.key);
+  };
+
+  // The view stays null until the canvas has a size; input before that is ignored.
   canvas.addEventListener('pointerdown', (event) => {
+    if (!view) return;
     canvas.setPointerCapture(event.pointerId);
-    gestures.down(event.pointerId, eventScreen(event), kindOf(event), draggable());
+    endDrag(gestures.down(event.pointerId, eventScreen(event), kindOf(event), draggable()));
   });
 
   canvas.addEventListener('pointermove', (event) => {
+    if (!view) return;
     const screen = eventScreen(event);
     const action = gestures.move(event.pointerId, screen);
     if (!action) {
@@ -71,14 +78,15 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
 
   const finish = (event) => {
     canvas.classList.remove('panning');
-    const action = event.type === 'pointercancel' ? (gestures.cancel(event.pointerId), null) : gestures.up(event.pointerId, eventScreen(event));
+    const action = event.type === 'pointercancel' ? gestures.cancel(event.pointerId) : gestures.up(event.pointerId, eventScreen(event));
     if (action?.type === 'click') handlers.onClick(latLonAt(action.screen));
-    else if (action?.type === 'drag-end') handlers.onDragEnd(action.key);
+    else endDrag(action);
   };
   canvas.addEventListener('pointerup', finish);
   canvas.addEventListener('pointercancel', finish);
 
   canvas.addEventListener('dblclick', (event) => {
+    if (!view) return;
     const screen = eventScreen(event);
     const hit = getMarkers().find((m) => Math.hypot(...screenOf(m.point).map((v, i) => v - screen[i])) <= 18);
     if (hit) handlers.onDoubleClick(hit.key);
@@ -88,6 +96,7 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
     'wheel',
     (event) => {
       event.preventDefault();
+      if (!view) return;
       const [x, y] = eventScreen(event);
       view = zoomAt(view, size, Math.exp(-event.deltaY * (event.ctrlKey ? WHEEL_STEP.pinch : WHEEL_STEP.plain)), x, y);
       requestRender();
@@ -101,6 +110,7 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
   return {
     requestRender,
     zoomBy(factor) {
+      if (!view) return;
       view = zoomAt(view, size, factor, size.width / 2, size.height / 2);
       requestRender();
     },
@@ -111,11 +121,13 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
       this.zoomBy(1 / BUTTON_ZOOM);
     },
     recenter() {
+      if (!view) return;
       view = fitView(renderer.bounds, size, size.width < 720 ? 12 : 40);
       requestRender();
     },
     /** Moves the view to a [lat, lon] when it is off screen. */
     reveal(point) {
+      if (!view) return;
       const [x, y] = screenOf(point);
       if (x >= 0 && y >= 0 && x <= size.width && y <= size.height) return;
       const [wx, wy] = projection.toWorld(point);
