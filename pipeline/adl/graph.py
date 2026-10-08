@@ -11,7 +11,13 @@ Model, per transit line (route + direction):
   headway is window length / departures from that stop;
 * changing line adds ``transfer_min`` plus the walk to the next stop (within
   ``max_transfer_walk_m``), then that line's boarding wait.
-Walking is straight-line distance x ``detour_factor`` at ``speed_m_per_min``.
+Walking is straight-line distance x ``detour_factor`` at ``speed_m_per_min`` unless the walk mode
+sets ``network: "streets"``: then every walked leg (access, egress, transfer, walk-only) follows a
+street graph (``adl.walkgraph``), still capped by ``max_access_m`` / ``max_transfer_walk_m`` measured
+as metres along the streets. Street metres are already the real path, so ``detour_factor`` (a
+correction for straight lines) is not applied to them. Points and stops reach the network through
+their nearest node within ``max_snap_m`` (default ``DEFAULT_MAX_SNAP_M``, exported in the graph's ``walk``);
+beyond that they cannot walk.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from datetime import date, datetime, timedelta
 from adl.gtfs_validate import Feed
 
 EARTH_RADIUS_M = 6_371_000.0
+DEFAULT_MAX_SNAP_M = 150.0
 MIN_RIDE_MINUTES = 0.4  # guards against zero-length edges from rounded timetables
 REFERENCE_WEEKDAYS = (1, 2, 3)  # Tue-Thu
 BUSIEST_SHARE = 0.92  # holiday timetables run thinner: only near-busiest days are "plain"
@@ -47,6 +54,8 @@ class Graph:
     modes: dict[str, dict]
     neighbors: dict[int, list[tuple[int, float]]] = field(default_factory=dict)
     headways: dict[tuple[int, int], float] = field(default_factory=dict)  # (stop, line) -> minutes
+    streets: object | None = None  # adl.walkgraph.StreetGraph when walking follows streets
+    stop_snaps: list = field(default_factory=list)  # per stop: (street node, metres) or None
 
 
 def wait_minutes(headway_min: float, params: dict) -> float:
@@ -56,6 +65,15 @@ def wait_minutes(headway_min: float, params: dict) -> float:
 
 def walk_minutes(distance_m: float, params: dict) -> float:
     return distance_m * params["detour_factor"] / params["speed_m_per_min"]
+
+
+def street_minutes(metres: float, params: dict) -> float:
+    """Minutes to walk ``metres`` along streets: no detour factor, the path is already the real one."""
+    return metres / params["speed_m_per_min"]
+
+
+def uses_streets(walk: dict) -> bool:
+    return walk.get("network", "straight") == "streets"
 
 
 def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -127,8 +145,11 @@ def _split_modes(city: dict) -> tuple[dict, dict[str, dict]]:
     return modes[walks[0]], transit
 
 
-def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | None = None) -> Graph:
+def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | None = None,
+                streets=None) -> Graph:
     walk, transit = _split_modes(city)
+    if uses_streets(walk) and streets is None:
+        raise GraphError("walk network 'streets' needs a street graph")
     mode_of_type = {}
     for mode_id, params in transit.items():
         for route_type in params.get("route_types", []):
@@ -205,25 +226,39 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
         for (line, sid), count in sorted(departures.items())
     }
 
-    neighbors: dict[int, list[tuple[int, float]]] = {i: [] for i in range(len(stops))}
-    reach = walk["max_transfer_walk_m"]
     points = [(s["lat"], s["lon"]) for s in stops]
-    for i, p in enumerate(points):
-        for j, q in enumerate(points):
-            d = distance_m(p, q)
-            if i != j and d <= reach:
-                neighbors[i].append((j, walk_minutes(d, walk)))
-    return Graph(ref, stops, lines, waits, rides, dict(walk), transit, neighbors, headways)
+    reach = walk["max_transfer_walk_m"]
+    snaps = [streets.nearest(p, walk.get("max_snap_m", DEFAULT_MAX_SNAP_M)) for p in points] if streets else []
+    neighbors: dict[int, list[tuple[int, float]]] = {i: [] for i in range(len(stops))}
+    if uses_streets(walk):
+        at_node: dict[int, list[int]] = defaultdict(list)
+        for j, snap in enumerate(snaps):
+            if snap:
+                at_node[snap[0]].append(j)
+        for i, snap in enumerate(snaps):
+            if not snap:
+                continue
+            found = []
+            for node, along in streets.reach(snap[0], reach - snap[1]).items():
+                for j in at_node.get(node, ()):
+                    total = snap[1] + along + snaps[j][1]
+                    if j != i and total <= reach:
+                        found.append((j, street_minutes(total, walk)))
+            neighbors[i] = sorted(found)
+    else:
+        for i, p in enumerate(points):
+            for j, q in enumerate(points):
+                d = distance_m(p, q)
+                if i != j and d <= reach:
+                    neighbors[i].append((j, walk_minutes(d, walk)))
+    exported = {**walk, "max_snap_m": walk.get("max_snap_m", DEFAULT_MAX_SNAP_M)} if uses_streets(walk) else dict(walk)
+    return Graph(ref, stops, lines, waits, rides, exported, transit, neighbors, headways, streets, snaps)
 
 
-def travel_times(
-    graph: Graph,
-    origin: tuple[float, float],
-    points: list[tuple[float, float]],
-    enabled_modes: set[str] | None = None,
-) -> list[float | None]:
-    """Minimum minutes from ``origin`` to each point (None: unreachable).
+def _ride_search(graph: Graph, origin: tuple[float, float], enabled_modes: set[str] | None):
+    """Transit search from ``origin``: ``(egress, from_origin, street_walk, street, max_snap)``.
 
+    ``egress`` maps a stop to the minutes needed to alight there; the rest only matter in streets mode.
     Nodes: ``("S", stop)`` walked-to stop where boarding is possible,
     ``("B", stop, line)`` just boarded (nothing ridden yet) and
     ``("R", stop, line)`` after at least one ride hop. Only ridden nodes can
@@ -252,10 +287,26 @@ def travel_times(
             best[node] = cost
             heapq.heappush(heap, (cost, node))
 
-    for i, c in enumerate(coords):
-        d = distance_m(origin, c)
-        if d <= max_access:
-            push(walk_minutes(d, walk), ("S", i))
+    street = graph.streets if uses_streets(walk) and graph.streets is not None else None
+    max_snap = walk.get("max_snap_m", DEFAULT_MAX_SNAP_M)
+
+    def street_walk(snap) -> dict[int, float]:
+        """Street node -> metres walked from a snapped point or stop, capped at ``max_access``."""
+        if snap is None or snap[1] > max_access:
+            return {}
+        return {n: snap[1] + d for n, d in street.reach(snap[0], max_access - snap[1]).items()}
+
+    from_origin: dict[int, float] = {}
+    if street:
+        from_origin = street_walk(street.nearest(origin, max_snap))
+        for i, snap in enumerate(graph.stop_snaps):
+            if snap and snap[0] in from_origin and from_origin[snap[0]] + snap[1] <= max_access:
+                push(street_minutes(from_origin[snap[0]] + snap[1], walk), ("S", i))
+    else:
+        for i, c in enumerate(coords):
+            d = distance_m(origin, c)
+            if d <= max_access:
+                push(walk_minutes(d, walk), ("S", i))
     while heap:
         cost, node = heapq.heappop(heap)
         if cost > best[node]:
@@ -279,7 +330,22 @@ def travel_times(
     for (kind, stop, *_), cost in best.items():
         if kind == "R":
             egress[stop] = min(egress.get(stop, math.inf), cost)
+    return egress, from_origin, street_walk, street, max_snap
 
+
+def travel_times(
+    graph: Graph,
+    origin: tuple[float, float],
+    points: list[tuple[float, float]],
+    enabled_modes: set[str] | None = None,
+) -> list[float | None]:
+    """Minimum minutes from ``origin`` to each point (None: unreachable); see ``_ride_search`` for the model."""
+    egress, from_origin, street_walk, street, max_snap = _ride_search(graph, origin, enabled_modes)
+    walk, max_access = graph.walk, graph.walk["max_access_m"]
+    if street:
+        return _street_results(graph, street, points, egress,
+                               from_origin=from_origin, street_walk=street_walk, max_snap=max_snap)
+    coords = [(s["lat"], s["lon"]) for s in graph.stops]
     results: list[float | None] = []
     for p in points:
         options = []
@@ -292,3 +358,40 @@ def travel_times(
                 options.append(cost + walk_minutes(d, walk))
         results.append(min(options) if options else None)
     return results
+
+
+def node_times(graph: Graph, origin: tuple[float, float], enabled_modes: set[str] | None = None) -> list[float | None]:
+    """Minimum minutes from ``origin`` to every street node (None: unreachable), as ``travel_times`` gives
+    for a point lying on that node. Needs a streets walk network."""
+    egress, from_origin, street_walk, street, _ = _ride_search(graph, origin, enabled_modes)
+    if street is None:
+        raise GraphError("node_times needs a street graph (walk network 'streets')")
+    walk = graph.walk
+    best = [math.inf] * len(street.lat)
+    for node, metres in from_origin.items():
+        best[node] = min(best[node], street_minutes(metres, walk))
+    for stop, cost in egress.items():
+        for node, metres in street_walk(graph.stop_snaps[stop]).items():
+            best[node] = min(best[node], cost + street_minutes(metres, walk))
+    return [None if b == math.inf else b for b in best]
+
+
+def _street_results(graph, street, points, egress, *, from_origin, street_walk, max_snap):
+    """Walk-only and stop-to-point times along streets (see ``travel_times``)."""
+    walk, max_access = graph.walk, graph.walk["max_access_m"]
+    snapped = [street.nearest(p, max_snap) for p in points]
+    at_node: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    for index, snap in enumerate(snapped):
+        if snap:
+            at_node[snap[0]].append((index, snap[1]))
+    best: list[float] = [math.inf] * len(points)
+    for node, metres in from_origin.items():
+        for index, snap_m in at_node.get(node, ()):
+            if metres + snap_m <= max_access:
+                best[index] = min(best[index], street_minutes(metres + snap_m, walk))
+    for stop, cost in egress.items():
+        for node, metres in street_walk(graph.stop_snaps[stop]).items():
+            for index, snap_m in at_node.get(node, ()):
+                if metres + snap_m <= max_access:
+                    best[index] = min(best[index], cost + street_minutes(metres + snap_m, walk))
+    return [None if b == math.inf else b for b in best]

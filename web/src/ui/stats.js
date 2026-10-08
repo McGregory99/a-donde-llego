@@ -20,7 +20,10 @@ function node(tag, attributes = {}, children = []) {
 }
 
 const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
-const SCOPES = ['boundary', 'served'];
+const SCOPES = ['boundary', 'served', 'streets'];
+
+/** The headline reach figure: the share of street nodes when walking follows streets, else of stops. */
+const reachValue = (reach) => (reach.scope === 'streets' ? reach.percent_nodes : reach.percent_stops);
 
 /** True when every field the panel prints is present and well-typed (a stale or partial stats.json must not break the page). */
 export function isUsableStats(stats) {
@@ -30,7 +33,7 @@ export function isUsableStats(stats) {
     isNumber(stats?.lines) &&
     typeof stats?.built_on === 'string' &&
     isNumber(reach?.threshold_min) &&
-    isNumber(reach?.percent_stops) &&
+    isNumber(reach && reachValue(reach)) &&
     isNumber(reach?.origins) &&
     SCOPES.includes(reach?.scope) &&
     isNumber(headway?.median_by_line_min) &&
@@ -49,7 +52,11 @@ export function renderStats(container, stats, t = defaultT) {
   }
   const { reach, headway, feed } = stats;
   const rows = [
-    ['reach', t('stats.reach', { minutes: reach.threshold_min }), t('stats.percent', { value: number.format(reach.percent_stops) })],
+    [
+      'reach',
+      t(reach.scope === 'streets' ? 'stats.reachStreets' : 'stats.reach', { minutes: reach.threshold_min }),
+      t('stats.percent', { value: number.format(reachValue(reach)) }),
+    ],
     ['headway', t('stats.headway'), t('stats.minutes', { value: number.format(headway.median_by_line_min) })],
     ['bestHeadway', t('stats.bestHeadway'), t('stats.minutes', { value: number.format(headway.best_min) })],
     ['stops', t('stats.stops'), number.format(stats.stops)],

@@ -49,7 +49,14 @@ def in_tmp_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
 
+STREET_WAYS = [{"type": "way", "id": 5, "tags": {"highway": "residential"}, "nodes": [1, 2],
+                "geometry": [{"lat": 41.6, "lon": -4.75}, {"lat": 41.601, "lon": -4.75}]}]
+STREETS = {"lat": [4160000, 100], "lon": [-475000, 0], "ways": [[0, 1]], "cls": [1]}  # what STREET_WAYS packs to
+
+
 def overpass(query: str) -> dict:
+    if "highway" in query:
+        return {"elements": STREET_WAYS}
     if "relation(7)" in query:
         return {"elements": [{"type": "relation", "id": 7, "members": [
             {"type": "way", "role": "outer", "geometry": RING}]}]}
@@ -85,6 +92,49 @@ def test_graph_asset_carries_what_the_client_needs(cities_dir, tmp_path, make_zi
     assert graph["walk"]["speed_m_per_min"] == 75
     assert graph["modes"]["road"]["transfer_min"] == 1.5
     assert len(graph["neighbors"]) == 4
+
+
+def test_walk_asset_holds_the_street_graph_and_where_each_stop_snaps(cities_dir, tmp_path, make_zip):
+    run(cities_dir, tmp_path / "out", make_zip)
+    walk = load(tmp_path / "out", "walk.json")
+    assert walk["n"] >= 2 and len(walk["lat"]) == walk["n"] == len(walk["deg"])
+    assert set(walk["stops"]) == {"node", "snap_m"}
+    assert len(walk["stops"]["node"]) == len(load(tmp_path / "out", "graph.json")["stops"])
+    assert walk["stops"]["node"][0] >= 0 and -1 in walk["stops"]["node"]  # S1 is by the street, others are far
+
+
+def test_skipping_osm_gives_an_empty_walk_graph(cities_dir, tmp_path, make_zip):
+    assert run(cities_dir, tmp_path / "out", make_zip, "--skip-osm") == 0
+    assert load(tmp_path / "out", "walk.json")["n"] == 0
+
+
+def test_streets_network_gives_transfer_neighbours_in_street_minutes(cities_dir, tmp_path, make_zip):
+    """S1 and S2 are 1.39 km apart as the crow flies but 1.95 km by the only street (an L): the built
+    neighbour minutes must follow the street, ignore the detour factor and need both stops snapped."""
+    l_shape = [{"type": "way", "id": 9, "tags": {"highway": "residential"}, "nodes": [1, 2, 3],
+                "geometry": [{"lat": 41.60, "lon": -4.75}, {"lat": 41.60, "lon": -4.74}, {"lat": 41.61, "lon": -4.74}]}]
+
+    def fetcher(query):
+        return {"elements": l_shape} if "highway" in query else overpass(query)
+
+    config = json.loads((cities_dir / "mini.json").read_text())
+    config["modes"]["foot"].update(max_transfer_walk_m=3000, detour_factor=1.3)
+    (cities_dir / "mini.json").write_text(json.dumps(config), encoding="utf-8")
+    assert run(cities_dir, tmp_path / "straight", make_zip, fetcher=fetcher) == 0
+    config["modes"]["foot"]["network"] = "streets"
+    (cities_dir / "mini.json").write_text(json.dumps(config), encoding="utf-8")
+    assert run(cities_dir, tmp_path / "streets", make_zip, fetcher=fetcher) == 0
+
+    graph, walk = load(tmp_path / "streets", "graph.json"), load(tmp_path / "streets", "walk.json")
+    assert graph["walk"]["network"] == "streets" and graph["walk"]["max_snap_m"] == 150.0
+    snapped = {i for i, node in enumerate(walk["stops"]["node"]) if node >= 0}
+    assert snapped == {0, 1}  # S1 and S2 are on the L, S3 and S4 are not
+    s1, s2 = dict(graph["neighbors"][0]), dict(graph["neighbors"][1])
+    assert set(s1) == {1} and set(s2) == {0}
+    assert s1[1] == pytest.approx(1945 / 75, abs=0.6)  # along the L, no 1.3 detour on top
+    assert graph["neighbors"][2] == [] and graph["neighbors"][3] == []
+    straight = dict(load(tmp_path / "straight", "graph.json")["neighbors"][0])
+    assert straight[1] == pytest.approx(1389 * 1.3 / 75, abs=0.6) and straight[1] != pytest.approx(s1[1], abs=1)
 
 
 def test_meta_records_feed_validity_source_and_build_timestamp(cities_dir, tmp_path, make_zip):
@@ -157,7 +207,7 @@ def test_city_without_boundary_skips_the_relation_query(cities_dir, tmp_path, ma
     assert run(cities_dir, tmp_path / "out", make_zip, fetcher=fetcher) == 0
     assert load(tmp_path / "out", "boundary.json") == {"id": None, "polygons": []}
     assert load(tmp_path / "out", "stats.json")["reach"]["scope"] == "served"
-    assert len(queries) == 1 and "relation" not in queries[0]
+    assert queries and all("relation" not in q for q in queries)
 
 
 def test_skip_osm_builds_offline_with_empty_context(cities_dir, tmp_path, make_zip):

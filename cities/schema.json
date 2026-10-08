@@ -85,6 +85,8 @@
           "detour_factor": { "type": "number", "minimum": 1 },
           "max_access_m": { "type": "number", "minimum": 0 },
           "max_transfer_walk_m": { "type": "number", "minimum": 0 },
+          "network": { "enum": ["straight", "streets"], "description": "walk mode: straight lines (default) or the street graph" },
+          "max_snap_m": { "type": "number", "minimum": 0, "description": "walk mode: farthest a point may be from a street node" },
           "route_types": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
           "wait": {
             "type": "object",

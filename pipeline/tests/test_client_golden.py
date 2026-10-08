@@ -15,9 +15,12 @@ import pytest
 from adl.build import graph_asset
 from adl.graph import Graph, build_graph, travel_times
 from adl.gtfs_validate import Feed
+from adl.walkgraph import StreetGraph, build_street_graph
 from test_graph import HOUR, at, make_city, make_feed
+from test_walkgraph import raw_streets
 
 GOLDEN = Path(__file__).resolve().parents[2] / "web" / "tests" / "golden" / "travel_times.json"
+GOLDEN_STREETS = GOLDEN.with_name("travel_times_streets.json")
 TODAY = date(2026, 10, 7)
 ORIGINS = [at(50), at(3000, 150), at(6000, -500), at(-3600, 4100)]  # last one boards the G-E line
 FLOAT_TOLERANCE = 1e-9
@@ -115,3 +118,79 @@ def test_last_golden_origin_rides_transit_beyond_the_walking_radius():
     walk_only = next(c for c in golden["cases"] if c["origin"] == list(ORIGINS[3]) and c["enabled"] == [])
     gained = [i for i, (t, w) in enumerate(zip(last["times"], walk_only["times"])) if t is not None and w is None]
     assert len(gained) >= 3
+
+
+# ---- streets mode: a river (x 0..300) crossed by one bridge, so walking must detour --------------------
+STREETS = [
+    [(0, -600), (0, 0), (0, 1000), (0, 3000)],  # west bank
+    [(0, 0), (300, 0)],  # the bridge
+    [(300, -600), (300, 0), (300, 1500), (300, 3000)],  # east bank
+    [(300, 1500), (1500, 1500), (3500, 1500)],  # avenue
+    [(3500, 1500), (3500, 1200), (3500, -500)],  # street south of the avenue's end
+    [(-1500, 1000), (0, 1000)],  # west avenue
+]
+STREET_STOPS = {
+    "A": at(20, 200), "B": at(3480, 1520), "C": at(310, 2900), "D": at(3490, 1250),
+    "E": at(-3000, 4000),  # no street within the snapping distance
+    "F": at(1500, 1700),  # 200 m off the avenue: beyond max_snap_m
+}
+STREET_ORIGINS = [at(10, 300), at(310, 100), at(3400, 1400), at(1500, 800), at(-3000, 4000)]
+STREET_ENABLED = [None, ["road"], []]
+
+
+def street_city():
+    city = make_city(HOUR, foot={"network": "streets", "detour_factor": 1.3})
+    return city
+
+
+def street_feed() -> Feed:
+    routes = {"R1": "3", "R2": "3", "T1": "0"}
+    rows = (trips("R1", [("A", 0), ("B", 9)]) + trips("R2", [("D", 0), ("C", 12)]) + trips("T1", [("E", 0), ("F", 5)]))
+    return make_feed(STREET_STOPS, routes, rows)
+
+
+def graph_from_street_assets(asset: dict, walk: dict) -> Graph:
+    """What the browser has: graph.json plus walk.json (stop snaps rounded to whole metres)."""
+    graph = graph_from_asset(asset)
+    graph.streets = StreetGraph.from_asset(walk)
+    graph.stop_snaps = [(n, float(m)) if n >= 0 else None for n, m in zip(walk["stops"]["node"], walk["stops"]["snap_m"])]
+    return graph
+
+
+def build_street_golden() -> dict:
+    feed = street_feed()
+    streets = build_street_graph(raw_streets(*STREETS), spacing_m=60)
+    built = build_graph(feed, street_city(), today=TODAY, streets=streets)
+    asset, walk = graph_asset(built, feed), streets.to_asset(built.stop_snaps)
+    graph = graph_from_street_assets(asset, walk)
+    nodes = [(la, lo) for la, lo in zip(graph.streets.lat, graph.streets.lon)]
+    points = [at(e, n) for n in range(-900, 3301, 300) for e in range(-2100, 4201, 300)] + nodes[::7]
+    cases = [
+        {"origin": list(origin), "enabled": enabled,
+         "times": travel_times(graph, origin, points, None if enabled is None else set(enabled))}
+        for origin in STREET_ORIGINS for enabled in STREET_ENABLED
+    ]
+    return {"graph": asset, "walk": walk, "points": [list(p) for p in points], "cases": cases}
+
+
+def test_golden_street_travel_times_match_python_model():
+    golden = build_street_golden()
+    if os.environ.get("ADL_UPDATE_GOLDEN"):
+        GOLDEN_STREETS.write_text(json.dumps(golden, sort_keys=True, indent=None) + "\n", encoding="utf-8")
+    assert_close(json.loads(GOLDEN_STREETS.read_text(encoding="utf-8")), json.loads(json.dumps(golden)))
+
+
+def test_street_golden_exercises_the_bridge_the_snaps_and_the_walking_limit():
+    golden = build_street_golden()
+    walk = golden["walk"]
+    assert walk["stops"]["node"][4] == -1 and walk["stops"]["node"][5] == -1 and min(walk["stops"]["node"][:4]) >= 0
+    assert golden["graph"]["walk"]["network"] == "streets" and golden["graph"]["walk"]["detour_factor"] == 1.3
+    assert any(row for row in golden["graph"]["neighbors"])  # B and D are street neighbours
+    walk_only = {tuple(c["origin"]): c["times"] for c in golden["cases"] if c["enabled"] == []}
+    west, east = walk_only[tuple(STREET_ORIGINS[0])], walk_only[tuple(STREET_ORIGINS[1])]
+    assert sum(t is not None for t in west) > 8 and sum(t is not None for t in east) > 8
+    assert walk_only[tuple(STREET_ORIGINS[3])].count(None) == len(golden["points"])  # 200 m off every street
+    assert walk_only[tuple(STREET_ORIGINS[4])].count(None) == len(golden["points"])
+    assert any(t is None for t in west) and any(t is not None for t in west)
+    with_transit = next(c for c in golden["cases"] if c["origin"] == list(STREET_ORIGINS[0]) and c["enabled"] is None)
+    assert sum(t is not None for t in with_transit["times"]) > sum(t is not None for t in west)

@@ -1,7 +1,6 @@
 // Application: state container + scene recomputation + wiring of map, legend and URL (R4.x, R7.3).
 import { createGrid } from '../core/grid.js';
 import { pointInPolygons } from '../core/geo.js';
-import { isochrones } from '../core/isochrone.js';
 import { t as defaultT } from '../i18n.js';
 import { cityDefaults, parseState, serializeState } from '../state-url.js';
 import { heatPixels } from './heat.js';
@@ -9,7 +8,7 @@ import { legendModel, renderLegend } from './legend.js';
 import { buildLayout } from './layout.js';
 import { createMap } from './map.js';
 import { createRenderer, COLORS } from './renderer.js';
-import { computeScene, destinationTrip } from './scene.js';
+import { computeScene, destinationTrip, sceneContours } from './scene.js';
 import { reduce } from './state.js';
 import { bindDismiss } from './dismiss.js';
 import { createToast } from './toast.js';
@@ -43,7 +42,8 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
   const renderer = createRenderer(layout.canvas, { data, projection, bbox: config.bbox, graph: data.graph });
 
   function paintHeat(upsample) {
-    renderer.setHeat(heatPixels(scene.times, grid.cols, grid.rows, state.scale, upsample));
+    if (scene.nodes) renderer.setStreetTimes(scene.nodes, state.scale);
+    else renderer.setHeat(heatPixels(scene.times, grid.cols, grid.rows, state.scale, upsample));
   }
 
   /** Recomputes only what `previous` -> `state` invalidated. */
@@ -59,7 +59,7 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
       paintHeat(fast ? HEAT_UPSAMPLE.drag : HEAT_UPSAMPLE.full);
     } else {
       if (previous.isochrones !== state.isochrones) {
-        scene = { ...scene, contours: isochrones(grid, scene.times, state.isochrones) };
+        scene = { ...scene, contours: sceneContours(data.graph, grid, scene, state.isochrones) };
         renderer.setContours(scene.contours);
       }
       if (previous.scale !== state.scale) paintHeat(HEAT_UPSAMPLE.full);

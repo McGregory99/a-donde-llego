@@ -18,6 +18,13 @@ export function walkMinutes(distance, walk) {
   return (distance * walk.detour_factor) / walk.speed_m_per_min;
 }
 
+/** Walking minutes for `metres` along streets: already the real path, so no detour factor (see street_minutes in graph.py). */
+export function streetMinutes(metres, walk) {
+  return metres / walk.speed_m_per_min;
+}
+
+export const DEFAULT_MAX_SNAP_M = 150;
+
 function inRing(point, ring) {
   const [y, x] = point;
   let inside = false;
