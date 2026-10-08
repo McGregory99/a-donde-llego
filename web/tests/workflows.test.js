@@ -36,11 +36,18 @@ describe('deploy workflow', () => {
   });
 
   it('deploys with the Pages actions, minimal permissions and one concurrent run', () => {
-    expect(deploy).toMatch(/permissions:\s*\n\s*contents: read\s*\n\s*pages: write\s*\n\s*id-token: write/);
+    expect(deploy).toMatch(/\npermissions:\s*\n\s*contents: read\s*\n\s*\n?concurrency:/);
     expect(deploy).toMatch(/concurrency:\s*\n\s*group: pages/);
     expect(deploy).toContain('actions/deploy-pages@v4');
     expect(deploy).toContain('actions/upload-pages-artifact@v3');
     expect(deploy).toMatch(/environment:\s*\n\s*name: github-pages/);
+  });
+
+  it('grants the Pages and OIDC write permissions to the deploy job only', () => {
+    const build = deploy.slice(deploy.indexOf('\n  build:'), deploy.indexOf('\n  deploy:'));
+    const job = deploy.slice(deploy.indexOf('\n  deploy:'));
+    expect(build).not.toMatch(/pages: write|id-token: write/);
+    expect(job).toMatch(/permissions:\s*\n\s*pages: write\s*\n\s*id-token: write/);
   });
 
   it('pins every action to a major version', () => {
