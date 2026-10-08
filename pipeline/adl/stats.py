@@ -5,8 +5,9 @@ threshold, averaged over the origin set. The share is never taken over the city
 bbox (mostly countryside, which would dilute it). Its area is the set of stops
 inside the city boundary when one is given ("boundary" scope), otherwise every
 stop ("served" scope: each stop is within ``max_access_m`` of a stop, itself,
-and nothing else defines the served area without a boundary). Headway: median of window length /
-departures per (stop, line), per line and overall. Pure; no clock.
+and nothing else defines the served area without a boundary). Headway: window length /
+departures per (stop, line); each line takes the median over its stops, then the headline is the median
+across lines (a line counts once, however many stops it has) and the best (smallest) line. Pure; no clock.
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ def compute_stats(
     by_line: dict[int, list[float]] = defaultdict(list)
     for (_, line), headway in graph.headways.items():
         by_line[line].append(headway)
-    every = [h for hs in by_line.values() for h in hs]
+    line_medians = {i: _median(hs) for i, hs in by_line.items()}
     return {
         "reference_date": graph.reference_date.isoformat(),
         "built_on": build_date.isoformat(),
@@ -71,9 +72,8 @@ def compute_stats(
             "percent_stops": round(sum(shares) / len(shares), 1),
         },
         "headway": {
-            "overall_median_min": _median(every),
-            "by_line": [
-                {"id": graph.lines[i]["id"], "median_min": _median(hs)} for i, hs in sorted(by_line.items())
-            ],
+            "median_by_line_min": _median(list(line_medians.values())),
+            "best_min": min(line_medians.values()),
+            "by_line": [{"id": graph.lines[i]["id"], "median_min": m} for i, m in sorted(line_medians.items())],
         },
     }
