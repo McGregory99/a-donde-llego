@@ -2,6 +2,7 @@
 
 Usage (from the repo root): PYTHONPATH=pipeline uv run python -m adl.build CITY [--out DIR] [--gtfs-file ZIP] [--allow-expired] [--skip-osm]
 Writes ``<out>/<city>/{meta,graph,lines,boundary,basemap,stats}.json``.
+Overpass failures fall back to the committed cache in cities/osm-cache/<city>/ (see adl.osm_cache).
 Exit codes: 0 ok, 1 build failure, 2 feed expired.
 
 Output is deterministic: sorted keys, compact separators, no clock reads except
@@ -22,12 +23,13 @@ from pathlib import Path
 from typing import Callable
 from urllib.request import urlopen
 
-from adl.boundary import BoundaryError, fetch_basemap, fetch_boundary, overpass_fetch
+from adl.boundary import BoundaryError, overpass_fetch
 from adl.config import ConfigError, load_city
 from adl.fetch import FetchError, fetch_gtfs
 from adl.geometry import line_geometry
 from adl.graph import Graph, GraphError, build_graph
 from adl.gtfs_validate import ExpiredFeedError, Feed, GtfsError, read_feed
+from adl.osm_cache import cache_dir, fetch_live, load_cache
 from adl.stats import StatsError, compute_stats
 
 ASSET_FILES = ("basemap.json", "boundary.json", "graph.json", "lines.json", "meta.json", "stats.json")
@@ -65,6 +67,7 @@ def build_assets(
     built_at: datetime,
     boundary: dict,
     basemap: dict,
+    osm_source: str = "live",
 ) -> tuple[dict[str, dict], list[str]]:
     """Pure: parsed inputs -> ({file name: JSON value}, warnings)."""
     graph = build_graph(feed, city, today=today)
@@ -78,6 +81,7 @@ def build_assets(
         "built_on": today.isoformat(),
         "reference_date": graph.reference_date.isoformat(),
         "feed": feed_meta,
+        "osm": {"source": osm_source},
     }
     assets = {
         "meta.json": meta,
@@ -115,13 +119,21 @@ def write_assets(assets: dict[str, dict], out_dir: Path) -> None:
         raise
 
 
-def osm_context(city: dict, fetcher: Callable[[str], dict], skip: bool) -> tuple[dict, dict]:
-    empty_boundary = {"id": None, "polygons": []}
+def osm_context(city: dict, fetcher: Callable[[str], dict], skip: bool,
+                cities_dir: Path | str | None = None) -> tuple[dict, dict, str]:
+    """Boundary, basemap and where they came from: live Overpass, the committed cache, or skipped."""
     if skip:
-        return empty_boundary, {"parks": [], "water": []}
-    relation = city.get("boundary", {}).get("osm_relation_id")
-    boundary = fetch_boundary(relation, fetcher) if relation else empty_boundary
-    return boundary, fetch_basemap(city["bbox"], fetcher)
+        return {"id": None, "polygons": []}, {"parks": [], "water": []}, "skipped"
+    try:
+        return (*fetch_live(city, fetcher), "live")
+    except BoundaryError as live_error:
+        try:
+            boundary, basemap = load_cache(city["id"], cities_dir)
+        except BoundaryError:
+            raise live_error from None
+        print(f"warning: {live_error}; using the committed OSM cache {cache_dir(city['id'], cities_dir)}",
+              file=sys.stderr)
+        return boundary, basemap, "cache"
 
 
 def main(argv=None, *, fetcher=overpass_fetch, opener=urlopen, now: datetime | None = None) -> int:
@@ -143,9 +155,9 @@ def main(argv=None, *, fetcher=overpass_fetch, opener=urlopen, now: datetime | N
             result = fetch_gtfs(city["gtfs"]["sources"], tmp, today, gtfs_file=args.gtfs_file,
                                 allow_expired=args.allow_expired, opener=opener)
             feed = read_feed(result.path)
-        boundary, basemap = osm_context(city, fetcher, args.skip_osm)
+        boundary, basemap, osm_source = osm_context(city, fetcher, args.skip_osm, args.cities_dir)
         assets, warnings = build_assets(city, feed, result.metadata(), today=today, built_at=built_at,
-                                        boundary=boundary, basemap=basemap)
+                                        boundary=boundary, basemap=basemap, osm_source=osm_source)
         write_assets(assets, Path(args.out) / city["id"])
     except ExpiredFeedError as exc:
         print(f"error: {exc}", file=sys.stderr)

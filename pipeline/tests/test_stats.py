@@ -129,3 +129,12 @@ def test_boundary_with_no_stops_inside_is_a_clear_error():
     far = {"id": 1, "polygons": [square(50_000, 50_000, 51_000, 51_000)]}
     with pytest.raises(StatsError, match="boundary"):
         stats(boundary=far)
+
+
+def test_headway_helpers_return_none_on_empty_input_instead_of_raising():
+    from adl.stats import _best, _median
+
+    assert _median([]) is None
+    assert _best([]) is None
+    assert _median([10.0, 20.0]) == 15.0
+    assert _best([20.0, 10.0]) == 10.0
