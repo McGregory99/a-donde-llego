@@ -49,7 +49,14 @@ def in_tmp_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
 
+STREET_WAYS = [{"type": "way", "id": 5, "tags": {"highway": "residential"}, "nodes": [1, 2],
+                "geometry": [{"lat": 41.6, "lon": -4.75}, {"lat": 41.601, "lon": -4.75}]}]
+STREETS = {"lat": [4160000, 100], "lon": [-475000, 0], "ways": [[0, 1]], "cls": [1]}  # what STREET_WAYS packs to
+
+
 def overpass(query: str) -> dict:
+    if "highway" in query:
+        return {"elements": STREET_WAYS}
     if "relation(7)" in query:
         return {"elements": [{"type": "relation", "id": 7, "members": [
             {"type": "way", "role": "outer", "geometry": RING}]}]}
@@ -85,6 +92,28 @@ def test_graph_asset_carries_what_the_client_needs(cities_dir, tmp_path, make_zi
     assert graph["walk"]["speed_m_per_min"] == 75
     assert graph["modes"]["road"]["transfer_min"] == 1.5
     assert len(graph["neighbors"]) == 4
+
+
+def test_walk_asset_holds_the_street_graph_and_where_each_stop_snaps(cities_dir, tmp_path, make_zip):
+    run(cities_dir, tmp_path / "out", make_zip)
+    walk = load(tmp_path / "out", "walk.json")
+    assert walk["n"] >= 2 and len(walk["lat"]) == walk["n"] == len(walk["deg"])
+    assert set(walk["stops"]) == {"node", "snap_m"}
+    assert len(walk["stops"]["node"]) == len(load(tmp_path / "out", "graph.json")["stops"])
+    assert walk["stops"]["node"][0] >= 0 and -1 in walk["stops"]["node"]  # S1 is by the street, others are far
+
+
+def test_skipping_osm_gives_an_empty_walk_graph(cities_dir, tmp_path, make_zip):
+    assert run(cities_dir, tmp_path / "out", make_zip, "--skip-osm") == 0
+    assert load(tmp_path / "out", "walk.json")["n"] == 0
+
+
+def test_streets_network_is_used_for_the_graph_asset(cities_dir, tmp_path, make_zip):
+    config = json.loads((cities_dir / "mini.json").read_text())
+    config["modes"]["foot"]["network"] = "streets"
+    (cities_dir / "mini.json").write_text(json.dumps(config), encoding="utf-8")
+    assert run(cities_dir, tmp_path / "out", make_zip) == 0
+    assert load(tmp_path / "out", "graph.json")["walk"]["network"] == "streets"
 
 
 def test_meta_records_feed_validity_source_and_build_timestamp(cities_dir, tmp_path, make_zip):
@@ -157,7 +186,7 @@ def test_city_without_boundary_skips_the_relation_query(cities_dir, tmp_path, ma
     assert run(cities_dir, tmp_path / "out", make_zip, fetcher=fetcher) == 0
     assert load(tmp_path / "out", "boundary.json") == {"id": None, "polygons": []}
     assert load(tmp_path / "out", "stats.json")["reach"]["scope"] == "served"
-    assert len(queries) == 1 and "relation" not in queries[0]
+    assert queries and all("relation" not in q for q in queries)
 
 
 def test_skip_osm_builds_offline_with_empty_context(cities_dir, tmp_path, make_zip):

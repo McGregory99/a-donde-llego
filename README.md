@@ -31,6 +31,8 @@ PYTHONPATH=pipeline uv run --locked python -m adl.build valladolid
 # If Overpass is down the build falls back to the committed cache in cities/osm-cache/<city>/
 # (meta.json records "osm": {"source": "live" | "cache" | "skipped"}). Refresh it from live Overpass and commit:
 PYTHONPATH=pipeline uv run --locked python -m adl.osm_cache valladolid
+# The cache also holds the pedestrian ways (streets.json) behind dist/data/<city>/walk.json, the street graph
+# (nodes, edges with metres, shape and road class). A walk mode with "network": "streets" walks along it.
 
 npx vite                         # dev server (serves dist/data under /data)
 npx vitest run                   # web unit tests
