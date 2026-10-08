@@ -28,6 +28,9 @@ npm ci && uv sync --locked
 # Build the data for a city into dist/data/<city>/ (downloads the feed and OSM data)
 PYTHONPATH=pipeline uv run --locked python -m adl.build valladolid
 # Offline variants: --gtfs-file feed.zip --skip-osm; --allow-expired is for local work only
+# If Overpass is down the build falls back to the committed cache in cities/osm-cache/<city>/
+# (meta.json records "osm": {"source": "live" | "cache" | "skipped"}). Refresh it from live Overpass and commit:
+PYTHONPATH=pipeline uv run --locked python -m adl.osm_cache valladolid
 
 npx vite                         # dev server (serves dist/data under /data)
 npx vitest run                   # web unit tests
