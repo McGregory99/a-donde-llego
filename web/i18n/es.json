@@ -41,7 +41,7 @@
     "arrivalWalk": "Tiempo a pie hasta el punto de llegada",
     "minutes": "{minutes} min",
     "beyond": "Más de {minutes} min",
-    "contours": "Líneas negras: isócronas"
+    "contours": "En negro: isócronas"
   },
   "itinerary": {
     "title": "Itinerario",

@@ -3,7 +3,8 @@
 import { labelSpot } from './contours.js';
 import { pointInPolygons } from '../core/geo.js';
 import { stopsVisible } from './stops.js';
-import { BASE_STYLE, bucketColor, edgeBuckets, pathsVisible, streetWidth } from './street-paint.js';
+import { BASE_STYLE, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx } from './street-paint.js';
+import { layerCovers, layerFor, layerOffset } from './layer-cache.js';
 import { boundsOf, toScreen } from './view.js';
 
 export const COLORS = {
@@ -51,6 +52,21 @@ function streetPaths(walk, toWorld) {
   return { world, classes };
 }
 
+const tickOf = (a, b) => {
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, dx: (b[0] - a[0]) / length, dy: (b[1] - a[1]) / length };
+};
+
+/** Path of ticks centred on their points, `half` world metres either side. */
+function tickPath(ticks, half) {
+  const path = new Path2D();
+  for (const { x, y, dx, dy } of ticks) {
+    path.moveTo(x - dx * half, y - dy * half);
+    path.lineTo(x + dx * half, y + dy * half);
+  }
+  return path;
+}
+
 const addRing = (path, ring, toWorld) => {
   ring.forEach((point, i) => {
     const [x, y] = toWorld(point);
@@ -94,11 +110,12 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
   const stops = graph.stops.map((stop) => toWorld([stop.lat, stop.lon]));
 
   const layers = { heat: null, contours: [], trip: null, streetTimes: null };
+  const layer = { canvas: null, valid: null };
   const walk = graph.walk?.network === 'streets' ? graph.streets : null;
   const streetBase = walk ? streetPaths(walk, toWorld) : null;
 
-  function worldTransform(view, size, dpr) {
-    ctx.setTransform(
+  function worldTransform(view, size, dpr, target = ctx) {
+    target.setTransform(
       dpr * view.scale, 0, 0, -dpr * view.scale,
       dpr * (size.width / 2 - view.cx * view.scale),
       dpr * (size.height / 2 + view.cy * view.scale),
@@ -143,40 +160,64 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
   }
 
   /** Streets in the neutral style, then every edge with a travel time over it in its colour. */
-  function drawStreets(view, size) {
+  function paintStreets(target, view, size) {
     const px = 1 / view.scale;
-    worldTransform(view, size, size.dpr);
-    ctx.save();
-    ctx.clip(land, 'evenodd'); // streets are only drawn inside the city boundary, like the heat was
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    worldTransform(view, size, size.dpr, target);
+    target.save();
+    target.clip(land, 'evenodd'); // streets are only drawn inside the city boundary, like the heat was
+    target.lineCap = 'round';
+    target.lineJoin = 'round';
     BASE_STYLE.forEach((style, cls) => {
       if (cls === 0 && !pathsVisible(view.scale)) return;
-      ctx.strokeStyle = style.color;
-      ctx.lineWidth = streetWidth(cls, view.scale) * px;
-      ctx.setLineDash(style.dash ? [4 * px, 3 * px] : []);
-      ctx.stroke(streetBase.classes[cls]);
+      target.strokeStyle = style.color;
+      target.lineWidth = streetWidth(cls, view.scale) * px;
+      target.setLineDash(style.dash ? [4 * px, 3 * px] : []);
+      target.stroke(streetBase.classes[cls]);
     });
-    ctx.setLineDash([]);
+    target.setLineDash([]);
     if (layers.streetTimes) {
       layers.streetTimes.forEach((paths, cls) => {
         if (cls === 0 && !pathsVisible(view.scale)) return;
-        ctx.lineWidth = streetWidth(cls, view.scale) * px;
+        target.lineWidth = streetWidth(cls, view.scale) * px;
         paths.forEach(({ color, path }) => {
-          ctx.strokeStyle = color;
-          ctx.stroke(path);
+          target.strokeStyle = color;
+          target.stroke(path);
         });
       });
     }
-    ctx.restore();
+    target.restore();
+  }
+
+  // Painting every segment takes tens of milliseconds, so the streets go through an off-screen layer a bit larger
+  // than the viewport: panning copies its pixels at an integer offset (layer-cache.js) and only a zoom, a new
+  // travel-time set or a pan beyond the margin repaints it. Too big a canvas (huge screens): paint directly.
+  function drawStreets(view, size) {
+    if (!layer.canvas || !layer.valid || !layerCovers(layer.valid, view, size)) {
+      const next = layerFor(view, size);
+      layer.valid = null;
+      if (!next) {
+        paintStreets(ctx, view, size);
+        return;
+      }
+      layer.canvas ??= document.createElement('canvas');
+      layer.canvas.width = next.pxWidth;
+      layer.canvas.height = next.pxHeight;
+      const target = layer.canvas.getContext('2d');
+      paintStreets(target, view, { width: next.pxWidth / next.dpr, height: next.pxHeight / next.dpr, dpr: next.dpr });
+      layer.valid = next;
+    }
+    const { x, y } = layerOffset(layer.valid, view, size);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(layer.canvas, x, y);
   }
 
   function drawContours(view, size, markers) {
     const px = 1 / view.scale;
     const avoid = markers.map(({ point }) => toScreen(view, size, toWorld(point)));
     const labels = [];
-    for (const { minutes, path, segments } of layers.contours) {
+    for (const { minutes, path: fixedPath, segments, ticks } of layers.contours) {
       if (!segments.length) continue;
+      const path = ticks ? tickPath(ticks, tickHalfPx(view.scale) * px) : fixedPath;
       worldTransform(view, size, size.dpr);
       ctx.save();
       ctx.clip(land, 'evenodd');
@@ -229,6 +270,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
         if (!entry) byBucket.set(bucket, (entry = { color: bucketColor(bucket, maxMinutes), path: new Path2D() }));
         addEdge(entry.path, walk, streetBase.world, e);
       }
+      layer.valid = null; // the off-screen street layer shows the old times
       layers.streetTimes = grouped.map((byBucket) => [...byBucket.entries()].sort((a, b) => a[0] - b[0]).map(([, entry]) => entry));
     },
 
@@ -242,7 +284,9 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
             path.moveTo(a[0], a[1]);
             path.lineTo(b[0], b[1]);
           }
-          return { minutes: Number(minutes), path, segments: worldSegments };
+          // On streets a front is a tick across each crossing street: drawn a fixed few pixels long, whatever the zoom.
+          const ticks = walk ? worldSegments.map(([a, b]) => tickOf(a, b)) : null;
+          return { minutes: Number(minutes), path, segments: worldSegments, ticks };
         })
         .sort((a, b) => a.minutes - b.minutes);
     },
@@ -283,10 +327,10 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
 
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = walk ? 0.6 : 0.8;
       for (const line of lines) {
         ctx.strokeStyle = line.color;
-        ctx.lineWidth = 2 * px;
+        ctx.lineWidth = (walk ? 1.6 : 2) * px;
         ctx.stroke(line.path);
       }
       ctx.globalAlpha = 1;

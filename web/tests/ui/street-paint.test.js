@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { decodeWalk } from '../../src/core/streets.js';
 import {
-  BASE_STYLE, STREET_LEVELS, bucketColor, edgeBuckets, pathsVisible, streetWidth,
+  BASE_STYLE, STREET_LEVELS, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx,
 } from '../../src/ui/street-paint.js';
 
 // 0 -(main)- 1 -(minor)- 2 -(path)- 3, and an island edge 4-5 nobody reaches.
@@ -63,5 +63,13 @@ describe('zoom dependent style', () => {
     expect(BASE_STYLE).toHaveLength(3);
     expect(BASE_STYLE[0].dash).toBe(true);
     expect(BASE_STYLE[2].dash).toBe(false);
+  });
+});
+
+describe('isochrone ticks', () => {
+  it('are a few pixels long far out and stay readable up close, never huge', () => {
+    expect(tickHalfPx(0.01)).toBeGreaterThanOrEqual(2);
+    expect(tickHalfPx(0.05)).toBeLessThan(tickHalfPx(5));
+    expect(tickHalfPx(100)).toBeLessThanOrEqual(7);
   });
 });

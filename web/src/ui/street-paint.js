@@ -55,3 +55,8 @@ export function bucketColor(bucket, maxMinutes) {
   const [r, g, b, a] = heatColor(((bucket + 0.5) / STREET_LEVELS) * maxMinutes * SPAN, maxMinutes);
   return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
 }
+
+const TICK_METRES = 45; // half length of an isochrone tick across a street (see core/street-contours.js)
+
+/** Half length in pixels of an isochrone tick at `scale` pixels per metre: its real length, kept between 2 and 7 px. */
+export const tickHalfPx = (scale) => Math.min(7, Math.max(2, TICK_METRES * scale));

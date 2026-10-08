@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createGrid } from '../../src/core/grid.js';
 import { decodeWalk } from '../../src/core/streets.js';
 import { cityDefaults, defaultState } from '../../src/state-url.js';
-import { computeScene, destinationTrip } from '../../src/ui/scene.js';
+import { computeScene, destinationTrip, sceneContours } from '../../src/ui/scene.js';
 
 const golden = JSON.parse(readFileSync(new URL('../golden/travel_times_streets.json', import.meta.url), 'utf8'));
 const graph = { ...golden.graph, streets: decodeWalk(golden.walk) };
@@ -45,5 +45,14 @@ describe('destinationTrip in streets mode', () => {
     const trip = destinationTrip(graph, { ...base, destination: target, scale: 120 });
     expect(trip.reachable).toBe(true);
     expect(trip.legs.some((leg) => leg.type === 'walk' && leg.path)).toBe(true);
+  });
+});
+
+describe('sceneContours', () => {
+  it('re-derives the fronts for other thresholds without recomputing the times', () => {
+    const scene = computeScene(graph, grid, base);
+    const fronts = sceneContours(graph, grid, scene, [5, 10]);
+    expect(Object.keys(fronts)).toEqual(['5', '10']);
+    expect(fronts[5]).toEqual(scene.contours[5]);
   });
 });
