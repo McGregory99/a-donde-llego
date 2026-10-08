@@ -193,3 +193,58 @@ test('stops show their name on hover once zoomed in, and stay hidden when zoomed
   expect(await sweep()).toBe(true);
   await expect(tooltip).toHaveText(/^(One|Two|Three|Four)$/);
 });
+
+const intersects = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const visibleBoxes = async (page, selectors) => {
+  const boxes = {};
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    if (await locator.isVisible()) boxes[selector] = await locator.boundingBox();
+  }
+  return boxes;
+};
+const noOverlaps = (boxes) => {
+  const names = Object.keys(boxes);
+  const clashes = [];
+  names.forEach((a, i) => names.slice(i + 1).forEach((b) => intersects(boxes[a], boxes[b]) && clashes.push(`${a} x ${b}`)));
+  return clashes;
+};
+
+test('desktop: the map fills the viewport and the stats card toggles without covering other panels', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  const map = await page.locator('#map').boundingBox();
+  expect(map).toMatchObject({ x: 0, y: 0, width: 1280, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+
+  const card = page.locator('.stats-card');
+  const toggle = page.getByRole('button', { name: 'Ocultar cifras' });
+  await expect(page.locator('.stats')).toBeVisible();
+  const panels = ['.overlay-left .topbar', '.trip-panel', '.stats-card', '.legend', '.attribution', '.zoom'];
+  expect(noOverlaps(await visibleBoxes(page, panels))).toEqual([]);
+  await page.screenshot({ path: process.env.ADL_SHOTS ? `${process.env.ADL_SHOTS}/ws-layout-desktop.png` : 'test-results/ws-layout-desktop.png' });
+
+  await toggle.click();
+  await expect(page.locator('.stats')).toBeHidden();
+  await expect(card).toBeVisible();
+  await page.getByRole('button', { name: 'Ver cifras' }).click();
+  await expect(page.locator('.stats')).toBeVisible();
+});
+
+test('mobile: the map fills the screen, the stats start collapsed and nothing overlaps', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  expect(await page.locator('#map').boundingBox()).toMatchObject({ x: 0, y: 0, width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator('.stats')).toBeHidden();
+  await expect(page.locator('.expiry-banner')).toBeHidden(); // fresh fixture: no banner
+  const panels = ['.overlay-left .topbar', '.trip-panel', '.stats-card', '.legend', '.attribution', '.zoom'];
+  expect(noOverlaps(await visibleBoxes(page, panels))).toEqual([]);
+  await page.screenshot({ path: process.env.ADL_SHOTS ? `${process.env.ADL_SHOTS}/ws-layout-mobile.png` : 'test-results/ws-layout-mobile.png' });
+  await page.getByRole('button', { name: 'Ver cifras' }).click();
+  await expect(page.locator('.stats')).toBeVisible();
+});

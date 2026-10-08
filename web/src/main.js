@@ -10,6 +10,7 @@ import { locate } from './ui/geolocate.js';
 import { renderTrip } from './ui/panel.js';
 import { buildShareUrl, shareLink } from './ui/share.js';
 import { renderExpiryBanner, renderStats } from './ui/stats.js';
+import { createStatsCard } from './ui/stats-card.js';
 import './ui/styles.css';
 
 const root = document.getElementById('app');
@@ -28,6 +29,7 @@ async function start() {
     t,
   });
 
+  createStatsCard(app.layout, t, { narrow: window.matchMedia('(max-width: 719px)').matches });
   renderExpiryBanner(app.layout.banner, data.meta, t);
   renderStats(app.layout.stats, data.stats, t);
   renderAttributionBar(

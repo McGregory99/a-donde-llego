@@ -78,6 +78,8 @@
   },
   "stats": {
     "title": "En cifras",
+    "show": "Ver cifras",
+    "hide": "Ocultar cifras",
     "reach": "Paradas a menos de {minutes} min del centro",
     "percent": "{value} %",
     "minutes": "{value} min",

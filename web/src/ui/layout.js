@@ -11,7 +11,10 @@ function el(tag, attributes = {}, children = []) {
   return node;
 }
 
-/** Fills `root` with header, expiry banner, map stage (legend, messages, attribution) and stats area; returns the pieces the app wires up. */
+/**
+ * Fills `root` with the full-screen map stage (canvas, zoom, legend, tooltip, messages, attribution) and the overlays
+ * floating over it: the left column (expiry banner, title and controls, itinerary panel) and the stats card; returns the pieces the app wires up.
+ */
 export function buildLayout(root, t = defaultT) {
   document.title = t('app.title');
   const controls = el('div', { class: 'controls' });
@@ -26,10 +29,14 @@ export function buildLayout(root, t = defaultT) {
   const tooltip = el('div', { class: 'stop-tooltip', role: 'tooltip', hidden: '' });
   const toast = el('div', { class: 'toast', role: 'status', hidden: '' });
   const attribution = el('div', { class: 'attribution' });
-  const stage = el('div', { class: 'stage' }, [canvas, zoom, legend, panel, tooltip, toast, attribution]);
+  const stage = el('div', { class: 'stage' }, [canvas, zoom, legend, tooltip, toast, attribution]);
   const header = el('header', {}, [el('h1', { text: t('app.title') }), el('p', { text: t('app.subtitle') })]);
   const banner = el('div', { class: 'expiry-banner', hidden: '' });
-  const stats = el('section', { class: 'stats' });
-  root.replaceChildren(header, banner, controls, stage, stats);
-  return { controls, canvas, zoom, legend, panel, tooltip, toast, stage, banner, stats, attribution };
+  const topbar = el('div', { class: 'topbar' }, [header, controls]);
+  const overlay = el('div', { class: 'overlay-left' }, [banner, topbar, panel]);
+  const stats = el('section', { class: 'stats', id: 'stats-panel' });
+  const statsToggle = el('button', { type: 'button', class: 'stats-toggle', 'aria-controls': 'stats-panel', 'aria-expanded': 'true' });
+  const statsCard = el('aside', { class: 'stats-card' }, [statsToggle, stats]);
+  root.replaceChildren(stage, overlay, statsCard);
+  return { controls, canvas, zoom, legend, panel, tooltip, toast, stage, banner, stats, statsCard, statsToggle, attribution };
 }
