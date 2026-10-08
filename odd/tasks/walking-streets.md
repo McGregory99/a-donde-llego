@@ -42,3 +42,4 @@ Make walking realistic and the map easier to control: walking follows the street
 ## Progress
 - 2026-10-08: feature document created.
 - 2026-10-08: T1-T3 done in commit aa1dd6a (travel choice: `travel` action over `modes`; stops hit-testing in ui/stops.js; tapping a stop shows its name AND sets the destination at the tapped point, hover shows the name on desktop). T6 done in commit 1103b20 (stats-card.js, overlay layout, e2e viewport/overlap checks). Verification: vitest 346 passed, pytest 145 passed, playwright 15 passed.
+- 2026-10-08: PR A merged as #19 (adds touch tooltip fix f044e14); deployed to Pages. Starting T4 on `feat/walking-streets-graph`.
