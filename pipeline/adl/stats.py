@@ -26,8 +26,14 @@ class StatsError(Exception):
     """The network cannot support the requested aggregates."""
 
 
-def _median(values: list[float]) -> float:
-    return round(statistics.median(values), 1)
+def _median(values: list[float]) -> float | None:
+    """Median rounded to 0.1, or None when there is nothing to measure."""
+    return round(statistics.median(values), 1) if values else None
+
+
+def _best(values: list[float]) -> float | None:
+    """Smallest value, or None when there is nothing to measure."""
+    return min(values) if values else None
 
 
 def compute_stats(
@@ -73,7 +79,7 @@ def compute_stats(
         },
         "headway": {
             "median_by_line_min": _median(list(line_medians.values())),
-            "best_min": min(line_medians.values()),
+            "best_min": _best(list(line_medians.values())),
             "by_line": [{"id": graph.lines[i]["id"], "median_min": m} for i, m in sorted(line_medians.items())],
         },
     }
