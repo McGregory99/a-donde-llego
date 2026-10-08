@@ -96,6 +96,11 @@ def _services_by_date(feed: Feed) -> dict[date, set[str]]:
     return active
 
 
+def services_on(feed: Feed, day: date) -> set[str]:
+    """Service ids running on ``day`` (calendar rows plus calendar_dates exceptions)."""
+    return _services_by_date(feed).get(day, set())
+
+
 def pick_reference_date(feed: Feed, today: date) -> date:
     """Earliest near-busiest Tue-Thu service day on or after ``today`` (else any)."""
     services = _services_by_date(feed)
@@ -135,7 +140,7 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
     window_min = (end - start) / 60.0
 
     ref = reference_date or pick_reference_date(feed, today)
-    active = _services_by_date(feed).get(ref, set())
+    active = services_on(feed, ref)
     if not active:
         raise GraphError(f"no service on reference date {ref.isoformat()}")
     route_mode = {

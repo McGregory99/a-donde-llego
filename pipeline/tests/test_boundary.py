@@ -67,22 +67,40 @@ def test_basemap_returns_water_and_parks_inside_the_bbox_query():
     assert len(basemap["water"]) == 1 and len(basemap["parks"]) == 1
 
 
-def test_overpass_fetch_tries_each_endpoint_until_one_answers():
-    calls = []
+class Reply:
+    def __init__(self, payload):
+        self.body = json.dumps(payload).encode()
 
-    class Reply:
-        def __init__(self, body): self.body = body
-        def read(self): return self.body
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+GOOD = {"elements": [{"type": "way", "id": 1}]}
+
+
+def scripted(*replies):
+    """An opener returning/raising the scripted replies in order, recording requested URLs."""
+    calls = []
 
     def opener(request, timeout=None):
         calls.append(request.full_url)
-        if len(calls) == 1:
-            raise OSError("busy")
-        return Reply(json.dumps({"elements": []}).encode())
+        reply = replies[len(calls) - 1]
+        if isinstance(reply, Exception):
+            raise reply
+        return Reply(reply)
 
-    assert overpass_fetch("q", urls=["http://a", "http://b"], opener=opener, sleep=lambda s: None) == {"elements": []}
+    return opener, calls
+
+
+def test_overpass_fetch_tries_each_endpoint_until_one_answers():
+    opener, calls = scripted(OSError("busy"), GOOD)
+    assert overpass_fetch("q", urls=["http://a", "http://b"], opener=opener, sleep=lambda s: None) == GOOD
     assert calls == ["http://a", "http://b"]
 
 
@@ -92,3 +110,40 @@ def test_overpass_fetch_fails_clearly_when_every_endpoint_is_down():
 
     with pytest.raises(BoundaryError, match="Overpass"):
         overpass_fetch("q", urls=["http://a"], opener=opener, sleep=lambda s: None)
+
+
+def test_runtime_error_remark_with_http_200_is_retried_on_the_next_endpoint():
+    timed_out = {"elements": [{"type": "way", "id": 1}], "remark": "runtime error: Query timed out"}
+    opener, calls = scripted(timed_out, GOOD)
+    assert overpass_fetch("q", urls=["http://a", "http://b"], opener=opener, sleep=lambda s: None) == GOOD
+    assert calls == ["http://a", "http://b"]
+
+
+@pytest.mark.parametrize("payload", [{}, {"elements": []}, {"elements": None}])
+def test_missing_or_empty_elements_count_as_failure(payload):
+    opener, calls = scripted(payload, GOOD)
+    assert overpass_fetch("q", urls=["http://a", "http://b"], opener=opener, sleep=lambda s: None) == GOOD
+    assert calls == ["http://a", "http://b"]
+
+
+def test_persistent_runtime_error_ends_in_a_boundary_error():
+    opener, _ = scripted({"elements": [], "remark": "runtime error: out of memory"})
+    with pytest.raises(BoundaryError, match="Overpass"):
+        overpass_fetch("q", urls=["http://a"], opener=opener, sleep=lambda s: None, attempts=1)
+
+
+def test_retry_rounds_back_off_with_growing_sleeps():
+    opener, calls = scripted(OSError("x"), OSError("x"), OSError("x"), GOOD)
+    sleeps = []
+    result = overpass_fetch("q", urls=["http://a"], opener=opener, sleep=sleeps.append, attempts=4)
+    assert result == GOOD
+    assert len(calls) == 4
+    assert sleeps == [5, 10, 15]
+
+
+def test_no_sleep_after_the_last_round():
+    opener, _ = scripted(OSError("x"), OSError("x"))
+    sleeps = []
+    with pytest.raises(BoundaryError):
+        overpass_fetch("q", urls=["http://a"], opener=opener, sleep=sleeps.append, attempts=2)
+    assert sleeps == [5]
