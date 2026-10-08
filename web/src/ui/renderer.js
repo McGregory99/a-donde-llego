@@ -209,6 +209,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     const { x, y } = layerOffset(layer.valid, view, size);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(layer.canvas, x, y);
+    worldTransform(view, size, size.dpr); // the layers drawn after the streets paint in world metres
   }
 
   function drawContours(view, size, markers) {
