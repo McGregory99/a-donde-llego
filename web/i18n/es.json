@@ -1,0 +1,111 @@
+{
+  "app": {
+    "title": "¿A dónde llego?",
+    "subtitle": "Mapa de tiempos de viaje en transporte público",
+    "loading": "Cargando la red de transporte…",
+    "mapLabel": "Mapa de tiempos de viaje"
+  },
+  "controls": {
+    "departure": "Salida",
+    "arrival": "Llegada",
+    "direction": "Sentido del viaje",
+    "invert": "Invertir: ver desde dónde se llega",
+    "myPosition": "Mi posición",
+    "share": "Compartir",
+    "shareCopied": "Enlace copiado al portapapeles",
+    "modes": "Modos de transporte",
+    "scale": "Tiempo máximo: {minutes} min",
+    "isochrones": "Isócronas",
+    "search": "Buscar una dirección o un lugar",
+    "searchPlaceholder": "Dirección o lugar",
+    "noResults": "No se han encontrado resultados en la zona cubierta.",
+    "resultsOutside": "Se han ocultado {count} resultados fuera de la zona cubierta.",
+    "zoomIn": "Acercar",
+    "zoomOut": "Alejar",
+    "recenter": "Centrar el mapa"
+  },
+  "modes": {
+    "walk": "A pie",
+    "bus": "Autobús"
+  },
+  "isochrone": {
+    "label": "{minutes} min",
+    "toggle": "Mostrar la isócrona de {minutes} min"
+  },
+  "legend": {
+    "departure": "Tiempo de viaje desde el punto de salida",
+    "arrival": "Tiempo de viaje hasta el punto de llegada",
+    "minutes": "{minutes} min",
+    "beyond": "Más de {minutes} min",
+    "contours": "Líneas negras: isócronas"
+  },
+  "itinerary": {
+    "title": "Itinerario",
+    "total": "Duración total: {minutes} min",
+    "notReachable": "No se puede llegar a este punto dentro del tiempo límite."
+  },
+  "legs": {
+    "walk": {
+      "toStop": "Camina {minutes} min hasta la parada {stop}",
+      "toPoint": "Camina {minutes} min hasta el punto de llegada"
+    },
+    "wait": "Espera {minutes} min la línea {line} en la parada {stop}",
+    "ride": {
+      "route": "Viaja {minutes} min en la línea {line} ({route}) desde {from} hasta {to}",
+      "plain": "Viaja {minutes} min en la línea {line} desde {from} hasta {to}"
+    },
+    "transfer": {
+      "same": "Transbordo en la parada {stop}: {minutes} min",
+      "walk": "Transbordo de {from} a {to}: {minutes} min"
+    }
+  },
+  "errors": {
+    "invalidLink": "El enlace compartido no es válido o está fuera de la zona cubierta; se ha cargado la vista por defecto.",
+    "outOfBounds": "Ese punto está fuera de la zona cubierta.",
+    "geolocationDenied": "No se ha podido obtener tu posición: permiso denegado. La salida no ha cambiado.",
+    "geolocationUnavailable": "No se ha podido obtener tu posición. La salida no ha cambiado.",
+    "outsideCity": "Tu posición está fuera de la zona cubierta. La salida no ha cambiado.",
+    "geocoder": "La búsqueda no está disponible ahora. Puedes seguir eligiendo el punto en el mapa.",
+    "shareFailed": "No se ha podido copiar el enlace.",
+    "dataLoad": "No se han podido cargar los datos del mapa. Inténtalo de nuevo más tarde.",
+    "geocoderRateLimit": "Demasiadas búsquedas seguidas. Espera un momento o elige el punto en el mapa.",
+    "geocoderTimeout": "La búsqueda ha tardado demasiado. Puedes seguir eligiendo el punto en el mapa."
+  },
+  "stats": {
+    "title": "En cifras",
+    "reach": "Paradas a menos de {minutes} min del centro",
+    "percent": "{value} %",
+    "minutes": "{value} min",
+    "headway": "Una línea típica pasa cada",
+    "bestHeadway": "La línea más frecuente pasa cada",
+    "stops": "Paradas",
+    "lines": "Líneas",
+    "validityLabel": "Horarios",
+    "validity": "Válidos del {from} al {to}",
+    "builtOn": "Datos calculados el {date}.",
+    "definitionsTitle": "Cómo se calcula",
+    "reachDefinition": {
+      "boundary": "Porcentaje de las paradas situadas dentro del límite municipal a las que se llega en {minutes} min o menos, saliendo del centro de la ciudad en un día laborable típico.",
+      "served": "Porcentaje de las paradas de la red a las que se llega en {minutes} min o menos, saliendo del centro de la ciudad en un día laborable típico."
+    },
+    "reachOrigins": "Es el promedio de {count} puntos de salida de referencia.",
+    "headwayDefinition": "Cada línea cuenta una sola vez, con el intervalo habitual entre salidas en sus paradas durante la franja horaria de referencia; el dato es la mediana de todas las líneas.",
+    "bestHeadwayDefinition": "Intervalo habitual entre salidas de la línea con más servicio en esa misma franja.",
+    "expired": "Datos de horarios caducados: el feed dejó de ser válido el {date}. Los tiempos pueden no reflejar el servicio actual."
+  },
+  "attribution": {
+    "title": "Acerca de",
+    "intro": "Este mapa se construye con datos abiertos y software libre. Estas son las fuentes y sus licencias.",
+    "about": "Acerca de",
+    "back": "Volver al mapa",
+    "feedDates": "Horarios válidos del {from} al {to}.",
+    "builtOn": "Datos calculados el {date}.",
+    "osm": "© OpenStreetMap contributors",
+    "osmText": "Mapa base, límite municipal y geometría de las líneas cuando el feed no la trae: datos de OpenStreetMap (ODbL).",
+    "photon": "Búsqueda de direcciones con Photon (Komoot), basado en datos de OpenStreetMap.",
+    "nominatim": "Búsqueda inversa de direcciones con Nominatim, basado en datos de OpenStreetMap.",
+    "reference": "Proyecto de referencia, de {author}: el mapa de tiempos de viaje se basa en su código, con licencia MIT.",
+    "commit": "Versión de referencia: {sha}",
+    "license": "Licencia: {license}"
+  }
+}

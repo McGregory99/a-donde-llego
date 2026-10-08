@@ -99,7 +99,7 @@ def test_shipped_valladolid_config_loads():
     city = load_city("valladolid", REPO / "cities")
     assert city["boundary"]["osm_relation_id"] == 348849
     assert city["bbox"] == [-4.9281803, 41.5231281, -4.6308064, 41.8155086]
-    assert city["center"] == [41.62, -4.72599]
+    assert city["center"] == [41.6523, -4.7245]  # Plaza Mayor, inside the bbox
     assert city["gtfs"]["license"] == "CC BY 3.0 ES"
     assert city["gtfs"]["attribution"] == "Fuente: AUVASA"
     assert city["gtfs"]["sources"] == [

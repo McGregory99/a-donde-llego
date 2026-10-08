@@ -101,6 +101,7 @@ def test_stats_boundary_basemap_and_lines_assets(cities_dir, tmp_path, make_zip)
     run(cities_dir, tmp_path / "out", make_zip)
     out = tmp_path / "out"
     assert load(out, "stats.json")["stops"] == 4
+    assert load(out, "stats.json")["reach"]["scope"] == "boundary"
     assert load(out, "boundary.json")["id"] == 7 and len(load(out, "boundary.json")["polygons"]) == 1
     assert len(load(out, "basemap.json")["water"]) == 1
     lines = load(out, "lines.json")
@@ -155,6 +156,7 @@ def test_city_without_boundary_skips_the_relation_query(cities_dir, tmp_path, ma
 
     assert run(cities_dir, tmp_path / "out", make_zip, fetcher=fetcher) == 0
     assert load(tmp_path / "out", "boundary.json") == {"id": None, "polygons": []}
+    assert load(tmp_path / "out", "stats.json")["reach"]["scope"] == "served"
     assert len(queries) == 1 and "relation" not in queries[0]
 
 
