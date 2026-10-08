@@ -60,17 +60,16 @@ export function parseState(search, city) {
   const params = new URLSearchParams(text.startsWith('?') ? text.slice(1) : text);
   const reject = (key) => ignored.push(key);
 
-  if (params.has('c') && params.get('c') !== city.id) reject('c');
+  // Coordinates only mean something inside their own city: a link for another city keeps
+  // the city-independent settings but drops (and reports) every location parameter.
+  const foreign = params.has('c') && params.get('c') !== city.id;
+  if (foreign) reject('c');
 
-  if (params.has('o')) {
-    const origin = parseCoordinates(params.get('o'), city.bbox);
-    if (origin) state.origin = origin;
-    else reject('o');
-  }
-  if (params.has('d')) {
-    const destination = parseCoordinates(params.get('d'), city.bbox);
-    if (destination) state.destination = destination;
-    else reject('d');
+  for (const [key, field] of [['o', 'origin'], ['d', 'destination']]) {
+    if (!params.has(key)) continue;
+    const point = foreign ? null : parseCoordinates(params.get(key), city.bbox);
+    if (point) state[field] = point;
+    else reject(key);
   }
 
   if (params.has('dir')) {

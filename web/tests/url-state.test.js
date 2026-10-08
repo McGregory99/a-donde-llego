@@ -93,6 +93,26 @@ describe('url state robustness (R7.4)', () => {
     expect(ignored).toContain('c');
   });
 
+  it('an oversize query is dropped whole: defaults and ignored == ["query"]', () => {
+    const { state, ignored } = parse('o=41.65,-4.72&' + 'x=1&'.repeat(600));
+    expect(state).toEqual(defaultState(city));
+    expect(ignored).toEqual(['query']);
+  });
+
+  it('a link for another city drops every location-dependent parameter and reports them', () => {
+    const { state, ignored } = parse('c=other&o=41.65,-4.72&d=41.66,-4.73&dir=arrival&max=20');
+    expect(state.city).toBe(config.id);
+    expect(state.origin).toEqual(config.center);
+    expect(state.destination).toBeNull();
+    expect(state.direction).toBe('arrival');
+    expect(state.scale).toBe(20);
+    expect(ignored.sort()).toEqual(['c', 'd', 'o']);
+  });
+
+  it('a foreign city link with no coordinates reports only c', () => {
+    expect(parse('c=other&dir=arrival').ignored).toEqual(['c']);
+  });
+
   it('clamps the scale to its range and rounds it', () => {
     expect(parse('max=1').state.scale).toBe(5);
     expect(parse('max=100000').state.scale).toBe(120);
