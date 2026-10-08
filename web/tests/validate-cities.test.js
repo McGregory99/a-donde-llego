@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { validateCities } from '../../scripts/validate-cities.mjs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateCities, DEFAULT_CITIES_DIR } from '../../scripts/validate-cities.mjs';
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const VALID = {
   id: 'foo',
@@ -18,14 +21,25 @@ const VALID = {
 
 function dirWith(city) {
   const dir = mkdtempSync(join(tmpdir(), 'cities-'));
-  copyFileSync('cities/schema.json', join(dir, 'schema.json'));
+  copyFileSync(join(REPO, 'cities', 'schema.json'), join(dir, 'schema.json'));
   if (city) writeFileSync(join(dir, 'foo.json'), JSON.stringify(city));
   return dir;
 }
 
 describe('validateCities', () => {
   it('accepts the shipped city configs', () => {
-    expect(validateCities('cities')).toEqual([]);
+    expect(validateCities(join(REPO, 'cities'))).toEqual([]);
+  });
+
+  it('defaults to the repo cities dir regardless of cwd', () => {
+    expect(DEFAULT_CITIES_DIR).toBe(join(REPO, 'cities'));
+    const cwd = process.cwd();
+    process.chdir(tmpdir());
+    try {
+      expect(validateCities()).toEqual([]);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   it('accepts a new valid city file', () => {
