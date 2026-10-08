@@ -1,0 +1,60 @@
+name: deploy
+
+# Publishes the site to GitHub Pages from main only. Timetable data is rebuilt on every run (weekly cron
+# included) so the published feed never goes stale silently; any failure leaves the previous deployment live.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      ADL_BASE: /a-donde-llego/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/validate-cities.mjs
+      - run: uv sync --locked
+      - name: Build data for every city
+        run: |
+          set -euo pipefail
+          for config in cities/*.json; do
+            city="$(basename "$config" .json)"
+            [ "$city" = "schema" ] && continue
+            PYTHONPATH=pipeline uv run --locked python -m adl.build "$city"
+          done
+      - name: Release gate (no expired feeds)
+        run: node scripts/release-gate.mjs
+      - run: npx vite build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
