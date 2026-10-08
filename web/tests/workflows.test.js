@@ -17,6 +17,12 @@ describe('deploy workflow', () => {
     expect(deploy).not.toContain('--skip-osm');
   });
 
+  it('uses the committed OSM cache; live Overpass (~20 min of street tiles) is an explicit, off-by-default input', () => {
+    expect(deploy).toMatch(/refresh_osm:[\s\S]*?type: boolean\s*\n\s*default: false/);
+    expect(deploy).toContain("ADL_REFRESH_OSM: ${{ inputs.refresh_osm && '1' || '' }}");
+    expect(deploy).not.toContain('--refresh-osm');
+  });
+
   it('builds every city from cities/ except the schema, with the locked environment', () => {
     expect(deploy).toContain('uv sync --locked');
     expect(deploy).toMatch(/cities\/\*\.json/);

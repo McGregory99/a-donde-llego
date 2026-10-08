@@ -14,8 +14,10 @@ Model, per transit line (route + direction):
 Walking is straight-line distance x ``detour_factor`` at ``speed_m_per_min`` unless the walk mode
 sets ``network: "streets"``: then every walked leg (access, egress, transfer, walk-only) follows a
 street graph (``adl.walkgraph``), still capped by ``max_access_m`` / ``max_transfer_walk_m`` measured
-as metres along the streets. Points and stops reach the network through their nearest node within
-``max_snap_m`` (default ``DEFAULT_MAX_SNAP_M``); beyond that they cannot walk.
+as metres along the streets. Street metres are already the real path, so ``detour_factor`` (a
+correction for straight lines) is not applied to them. Points and stops reach the network through
+their nearest node within ``max_snap_m`` (default ``DEFAULT_MAX_SNAP_M``, exported in the graph's ``walk``);
+beyond that they cannot walk.
 """
 
 from __future__ import annotations
@@ -63,6 +65,11 @@ def wait_minutes(headway_min: float, params: dict) -> float:
 
 def walk_minutes(distance_m: float, params: dict) -> float:
     return distance_m * params["detour_factor"] / params["speed_m_per_min"]
+
+
+def street_minutes(metres: float, params: dict) -> float:
+    """Minutes to walk ``metres`` along streets: no detour factor, the path is already the real one."""
+    return metres / params["speed_m_per_min"]
 
 
 def uses_streets(walk: dict) -> bool:
@@ -236,7 +243,7 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
                 for j in at_node.get(node, ()):
                     total = snap[1] + along + snaps[j][1]
                     if j != i and total <= reach:
-                        found.append((j, walk_minutes(total, walk)))
+                        found.append((j, street_minutes(total, walk)))
             neighbors[i] = sorted(found)
     else:
         for i, p in enumerate(points):
@@ -244,7 +251,8 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
                 d = distance_m(p, q)
                 if i != j and d <= reach:
                     neighbors[i].append((j, walk_minutes(d, walk)))
-    return Graph(ref, stops, lines, waits, rides, dict(walk), transit, neighbors, headways, streets, snaps)
+    exported = {**walk, "max_snap_m": walk.get("max_snap_m", DEFAULT_MAX_SNAP_M)} if uses_streets(walk) else dict(walk)
+    return Graph(ref, stops, lines, waits, rides, exported, transit, neighbors, headways, streets, snaps)
 
 
 def travel_times(
@@ -297,7 +305,7 @@ def travel_times(
         from_origin = street_walk(street.nearest(origin, max_snap))
         for i, snap in enumerate(graph.stop_snaps):
             if snap and snap[0] in from_origin and from_origin[snap[0]] + snap[1] <= max_access:
-                push(walk_minutes(from_origin[snap[0]] + snap[1], walk), ("S", i))
+                push(street_minutes(from_origin[snap[0]] + snap[1], walk), ("S", i))
     else:
         for i, c in enumerate(coords):
             d = distance_m(origin, c)
@@ -356,10 +364,10 @@ def _street_results(graph, street, points, egress, *, from_origin, street_walk, 
     for node, metres in from_origin.items():
         for index, snap_m in at_node.get(node, ()):
             if metres + snap_m <= max_access:
-                best[index] = min(best[index], walk_minutes(metres + snap_m, walk))
+                best[index] = min(best[index], street_minutes(metres + snap_m, walk))
     for stop, cost in egress.items():
         for node, metres in street_walk(graph.stop_snaps[stop]).items():
             for index, snap_m in at_node.get(node, ()):
                 if metres + snap_m <= max_access:
-                    best[index] = min(best[index], cost + walk_minutes(metres + snap_m, walk))
+                    best[index] = min(best[index], cost + street_minutes(metres + snap_m, walk))
     return [None if b == math.inf else b for b in best]

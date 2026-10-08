@@ -2,12 +2,18 @@ name: deploy
 
 # Publishes the site to GitHub Pages from main only. Timetable data is rebuilt on every run (weekly cron
 # included) so the published feed never goes stale silently; any failure leaves the previous deployment live.
+# OSM data comes from the committed cache (cities/osm-cache); live Overpass is opt-in via the refresh_osm input.
 on:
   push:
     branches: [main]
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
+    inputs:
+      refresh_osm:
+        description: "Fetch OSM data (boundary, basemap, streets) from live Overpass (about 20 min) instead of the committed cache"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ADL_BASE: /a-donde-llego/
+      ADL_REFRESH_OSM: ${{ inputs.refresh_osm && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

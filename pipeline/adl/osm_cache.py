@@ -1,7 +1,10 @@
 """Committed fallback for the OSM context (boundary, basemap and pedestrian streets) of a city.
 
-Overpass is often down, so the build falls back to ``<cities dir>/osm-cache/<city>/{boundary,basemap}.json``
-(same shapes as the build output). Refresh it from live Overpass, then commit it:
+Overpass is slow and often down (the streets alone are about 36 tiles, roughly 19 minutes), so the build
+reads ``<cities dir>/osm-cache/<city>/{boundary,basemap,streets}.json`` by default and only goes live when
+asked (``adl.build --refresh-osm`` or ``ADL_REFRESH_OSM=1``) or when the cache cannot serve the city.
+``streets.json`` is optional for caches that predate it: a city whose walk network is straight does not need it.
+Refresh the cache from live Overpass, then commit it:
 
     PYTHONPATH=pipeline uv run --locked python -m adl.osm_cache CITY [--cities-dir DIR]
 """
@@ -32,17 +35,20 @@ def fetch_live(city: dict, fetcher: Callable[[str], dict]) -> tuple[dict, dict, 
     return boundary, fetch_basemap(city["bbox"], fetcher), fetch_streets(city["bbox"], fetcher)
 
 
-def save_cache(city_id: str, boundary: dict, basemap: dict, streets: dict,
+def save_cache(city_id: str, boundary: dict, basemap: dict, streets: dict | None,
                cities_dir: Path | str | None = None) -> Path:
     target = cache_dir(city_id, cities_dir)
     target.mkdir(parents=True, exist_ok=True)
     for name, value in zip(FILES, (boundary, basemap, streets)):
+        if value is None:
+            continue
         text = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
         (target / name).write_text(text, encoding="utf-8")
     return target
 
 
-def load_cache(city_id: str, cities_dir: Path | str | None = None) -> tuple[dict, dict, dict]:
+def load_cache(city_id: str, cities_dir: Path | str | None = None) -> tuple[dict, dict, dict | None]:
+    """Boundary, basemap and streets of the cache; ``streets`` is None when the cache has no streets.json."""
     target = cache_dir(city_id, cities_dir)
     loaded = []
     for name in FILES:
@@ -50,6 +56,9 @@ def load_cache(city_id: str, cities_dir: Path | str | None = None) -> tuple[dict
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
+            if name == "streets.json" and (target / FILES[0]).exists():
+                loaded.append(None)
+                continue
             raise BoundaryError(f"no OSM cache for '{city_id}' ({path} is missing)") from None
         except (OSError, ValueError) as exc:
             raise BoundaryError(f"unreadable OSM cache file {path.name}: {exc}") from exc
