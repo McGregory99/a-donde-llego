@@ -48,3 +48,23 @@ describe('renderTrip', () => {
     expect(el.querySelectorAll('li')).toHaveLength(0);
   });
 });
+
+describe('renderTrip clear button', () => {
+  it('has an accessible close button that calls onClear', () => {
+    const state = { ...base, destination: far };
+    const el = document.createElement('aside');
+    let cleared = 0;
+    renderTrip(el, { graph, state, trip: destinationTrip(graph, state) }, t, () => cleared++);
+    const close = el.querySelector('button[data-action="clear-destination"]');
+    expect(close.getAttribute('aria-label')).toBe(t('itinerary.clear'));
+    close.click();
+    expect(cleared).toBe(1);
+  });
+
+  it('also appears when the point is not reachable', () => {
+    const state = { ...base, destination: far, scale: 5 };
+    const el = document.createElement('aside');
+    renderTrip(el, { graph, state, trip: destinationTrip(graph, state) }, t, () => {});
+    expect(el.querySelector('button[data-action="clear-destination"]')).not.toBeNull();
+  });
+});

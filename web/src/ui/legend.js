@@ -4,7 +4,7 @@ import { legendGradient } from './color.js';
 /** Plain description of what the legend shows for a view state. */
 export function legendModel(state) {
   return {
-    captionKey: state.direction === 'arrival' ? 'legend.arrival' : 'legend.departure',
+    captionKey: `legend.${state.direction === 'arrival' ? 'arrival' : 'departure'}${state.modes.length ? '' : 'Walk'}`,
     ticks: [0, Math.round(state.scale / 2), state.scale],
     contours: [...state.isochrones].sort((a, b) => a - b),
   };

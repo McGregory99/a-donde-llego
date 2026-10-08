@@ -119,3 +119,132 @@ test('the map still loads when stats.json is missing and the stats panel stays h
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   consoleErrors.length = 0; // the browser logs the intentional 404
 });
+
+test('the close button removes the destination, the itinerary and the d parameter', async ({ page }) => {
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  expect(page.url()).toMatch(/[?&]d=/);
+  await page.getByRole('button', { name: 'Quitar destino' }).click();
+  await expect(page.locator('.trip-panel')).toBeHidden();
+  expect(page.url()).not.toMatch(/[?&]d=/);
+});
+
+test('Escape removes the destination', async ({ page }) => {
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.trip-panel')).toBeHidden();
+  expect(page.url()).not.toMatch(/[?&]d=/);
+});
+
+test('clicking the arrival marker removes it instead of moving it', async ({ page }) => {
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  await clickCentre(page); // the marker sits where the first click landed
+  await expect(page.locator('.trip-panel')).toBeHidden();
+  expect(page.url()).not.toMatch(/[?&]d=/);
+});
+
+test('"Solo a pie" and back changes the reachable trip and persists in the URL', async ({ page }) => {
+  await open(page);
+  const transit = page.getByRole('radio', { name: /\+ a pie$/ });
+  const walkOnly = page.getByRole('radio', { name: 'Solo a pie' });
+  await expect(transit).toBeChecked();
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
+
+  await walkOnly.check();
+  await expect(walkOnly).toBeChecked();
+  await expect.poll(() => page.url()).toMatch(/modes=&/);
+  await expect(page.locator('.trip-panel li')).toHaveCount(0); // too far to walk
+  await expect(page.locator('.legend')).toContainText('a pie');
+
+  const shared = page.url();
+  await page.goto(shared);
+  await expect(page.getByRole('radio', { name: 'Solo a pie' })).toBeChecked();
+
+  await page.getByRole('radio', { name: /\+ a pie$/ }).check();
+  await expect.poll(() => page.url()).not.toMatch(/modes=&/);
+  await expect(page.locator('.trip-panel li').first()).toBeVisible();
+});
+
+test('stops show their name on hover once zoomed in, and stay hidden when zoomed out', async ({ page }) => {
+  await open(page);
+  const tooltip = page.locator('.stop-tooltip');
+  // Sweep synthetic mouse moves over the canvas inside the page (fast); the tooltip appears when one lands on a stop.
+  const sweep = () =>
+    page.evaluate(() => {
+      const canvas = document.getElementById('map');
+      const rect = canvas.getBoundingClientRect();
+      const tip = document.querySelector('.stop-tooltip');
+      for (let y = 4; y < rect.height; y += 8) {
+        for (let x = 4; x < rect.width; x += 8) {
+          canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + x, clientY: rect.top + y, pointerId: 7, pointerType: 'mouse', bubbles: true }));
+          if (!tip.hidden) return true;
+        }
+      }
+      return false;
+    });
+  expect(await sweep()).toBe(false); // zoomed out: no stop is interactive
+  for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
+  expect(await sweep()).toBe(true);
+  await expect(tooltip).toHaveText(/^(One|Two|Three|Four)$/);
+});
+
+const intersects = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const visibleBoxes = async (page, selectors) => {
+  const boxes = {};
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    if (await locator.isVisible()) boxes[selector] = await locator.boundingBox();
+  }
+  return boxes;
+};
+const noOverlaps = (boxes) => {
+  const names = Object.keys(boxes);
+  const clashes = [];
+  names.forEach((a, i) => names.slice(i + 1).forEach((b) => intersects(boxes[a], boxes[b]) && clashes.push(`${a} x ${b}`)));
+  return clashes;
+};
+
+test('desktop: the map fills the viewport and the stats card toggles without covering other panels', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  const map = await page.locator('#map').boundingBox();
+  expect(map).toMatchObject({ x: 0, y: 0, width: 1280, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+
+  const card = page.locator('.stats-card');
+  const toggle = page.getByRole('button', { name: 'Ocultar cifras' });
+  await expect(page.locator('.stats')).toBeVisible();
+  const panels = ['.overlay-left .topbar', '.trip-panel', '.stats-card', '.legend', '.attribution', '.zoom'];
+  expect(noOverlaps(await visibleBoxes(page, panels))).toEqual([]);
+  await page.screenshot({ path: process.env.ADL_SHOTS ? `${process.env.ADL_SHOTS}/ws-layout-desktop.png` : 'test-results/ws-layout-desktop.png' });
+
+  await toggle.click();
+  await expect(page.locator('.stats')).toBeHidden();
+  await expect(card).toBeVisible();
+  await page.getByRole('button', { name: 'Ver cifras' }).click();
+  await expect(page.locator('.stats')).toBeVisible();
+});
+
+test('mobile: the map fills the screen, the stats start collapsed and nothing overlaps', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  await clickCentre(page);
+  await expect(page.locator('.trip-panel')).toBeVisible();
+  expect(await page.locator('#map').boundingBox()).toMatchObject({ x: 0, y: 0, width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator('.stats')).toBeHidden();
+  await expect(page.locator('.expiry-banner')).toBeHidden(); // fresh fixture: no banner
+  const panels = ['.overlay-left .topbar', '.trip-panel', '.stats-card', '.legend', '.attribution', '.zoom'];
+  expect(noOverlaps(await visibleBoxes(page, panels))).toEqual([]);
+  await page.screenshot({ path: process.env.ADL_SHOTS ? `${process.env.ADL_SHOTS}/ws-layout-mobile.png` : 'test-results/ws-layout-mobile.png' });
+  await page.getByRole('button', { name: 'Ver cifras' }).click();
+  await expect(page.locator('.stats')).toBeVisible();
+});

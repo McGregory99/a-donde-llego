@@ -1,15 +1,17 @@
 // Map widget: owns the view (pan/zoom), the pointer gestures and frame scheduling (browser only).
-import { createGestures } from './gestures.js';
+import { createGestures, markerAt } from './gestures.js';
+import { nearestStop, stopsVisible } from './stops.js';
 import { fitView, panBy, resizeView, toScreen, toWorldPoint, zoomAt } from './view.js';
 
 const WHEEL_STEP = { plain: 0.0018, pinch: 0.01 };
 const BUTTON_ZOOM = 1.4;
 
 /**
- * `getMarkers()` -> [{key, point: [lat, lon], color, label, draggable}]; `handlers` receive lat/lon points:
- * onClick(point), onDrag(key, point), onDragEnd(key), onDoubleClick(key).
+ * `getMarkers()` -> [{key, point: [lat, lon], color, label, draggable}]; `stops` -> [{point: [lat, lon]}] (hover/tap targets
+ * while zoomed in); `handlers` receive lat/lon points: onClick(point), onDrag(key, point), onDragEnd(key), onDoubleClick(key),
+ * onMarkerClick(key) for a click on a non-draggable marker, onStopFocus(index | null, screen | null) for the stop under the pointer.
  */
-export function createMap({ canvas, renderer, projection, getMarkers, contourLabel, handlers }) {
+export function createMap({ canvas, renderer, projection, getMarkers, contourLabel, handlers, stops = [] }) {
   let size = { width: 0, height: 0, dpr: 1 };
   let view = null;
   let queued = false;
@@ -23,6 +25,24 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
   };
   const kindOf = (event) => (event.pointerType === 'mouse' ? 'mouse' : 'touch');
   const draggable = () => getMarkers().filter((m) => m.draggable).map((m) => ({ key: m.key, screen: screenOf(m.point) }));
+
+  // Stops react only while they are drawn; hovering (mouse) and tapping (touch) report the one under the pointer.
+  let focusedStop = null;
+  const focusStop = (index, screen = null) => {
+    if (index === focusedStop) return;
+    focusedStop = index;
+    handlers.onStopFocus(index, index === null ? null : screen);
+  };
+  const stopAt = (screen, kind) => {
+    if (!stopsVisible(view)) return null;
+    const index = nearestStop(screen, stops.map((stop) => screenOf(stop.point)), kind);
+    return index === null ? null : { index, screen: screenOf(stops[index].point) };
+  };
+  const focusAt = (screen, kind) => {
+    const hit = stopAt(screen, kind);
+    if (hit) focusStop(hit.index, hit.screen);
+    else focusStop(null);
+  };
 
   function render() {
     queued = false;
@@ -62,8 +82,10 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
     const action = gestures.move(event.pointerId, screen);
     if (!action) {
       canvas.classList.toggle('over-marker', draggable().some((m) => Math.hypot(m.screen[0] - screen[0], m.screen[1] - screen[1]) < 18));
+      if (kindOf(event) === 'mouse') focusAt(screen, 'mouse');
       return;
     }
+    focusStop(null);
     if (action.type === 'pan') {
       view = panBy(view, action.dx, action.dy);
       canvas.classList.add('panning');
@@ -79,11 +101,25 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
   const finish = (event) => {
     canvas.classList.remove('panning');
     const action = event.type === 'pointercancel' ? gestures.cancel(event.pointerId) : gestures.up(event.pointerId, eventScreen(event));
-    if (action?.type === 'click') handlers.onClick(latLonAt(action.screen));
-    else endDrag(action);
+    if (action?.type === 'click') {
+      const kind = kindOf(event);
+      const fixed = getMarkers().filter((m) => !m.draggable).map((m) => ({ key: m.key, screen: screenOf(m.point) }));
+      const key = markerAt(action.screen, fixed, kind);
+      if (key) {
+        focusStop(null);
+        handlers.onMarkerClick(key);
+        return;
+      }
+      focusAt(action.screen, kind);
+      handlers.onClick(latLonAt(action.screen));
+    } else endDrag(action);
   };
   canvas.addEventListener('pointerup', finish);
   canvas.addEventListener('pointercancel', finish);
+  // Touch fires pointerleave right after every tap; only a hovering mouse leaving the map hides the name.
+  canvas.addEventListener('pointerleave', (event) => {
+    if (event.pointerType === 'mouse') focusStop(null);
+  });
 
   canvas.addEventListener('dblclick', (event) => {
     if (!view) return;
@@ -97,6 +133,7 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
     (event) => {
       event.preventDefault();
       if (!view) return;
+      focusStop(null);
       const [x, y] = eventScreen(event);
       view = zoomAt(view, size, Math.exp(-event.deltaY * (event.ctrlKey ? WHEEL_STEP.pinch : WHEEL_STEP.plain)), x, y);
       requestRender();
@@ -111,6 +148,7 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
     requestRender,
     zoomBy(factor) {
       if (!view) return;
+      focusStop(null);
       view = zoomAt(view, size, factor, size.width / 2, size.height / 2);
       requestRender();
     },

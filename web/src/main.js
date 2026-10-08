@@ -10,6 +10,7 @@ import { locate } from './ui/geolocate.js';
 import { renderTrip } from './ui/panel.js';
 import { buildShareUrl, shareLink } from './ui/share.js';
 import { renderExpiryBanner, renderStats } from './ui/stats.js';
+import { createStatsCard } from './ui/stats-card.js';
 import './ui/styles.css';
 
 const root = document.getElementById('app');
@@ -28,6 +29,7 @@ async function start() {
     t,
   });
 
+  createStatsCard(app.layout, t, { narrow: window.matchMedia('(max-width: 719px)').matches });
   renderExpiryBanner(app.layout.banner, data.meta, t);
   renderStats(app.layout.stats, data.stats, t);
   renderAttributionBar(
@@ -37,7 +39,8 @@ async function start() {
     t,
   );
 
-  const paintTrip = (state, { trip }) => renderTrip(app.layout.panel, { graph: data.graph, state, trip }, t);
+  const clearDestination = () => app.dispatch({ type: 'destination', point: null });
+  const paintTrip = (state, { trip }) => renderTrip(app.layout.panel, { graph: data.graph, state, trip }, t, clearDestination);
   app.subscribe(paintTrip);
   paintTrip(app.getState(), { trip: app.trip() });
 }

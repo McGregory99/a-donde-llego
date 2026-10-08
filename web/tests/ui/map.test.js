@@ -7,15 +7,15 @@ import { createProjection } from '../../src/ui/view.js';
 const projection = createProjection([41.65, -4.72]);
 const origin = [41.65, -4.72];
 
-function setup({ width, height }) {
+function setup({ width, height, stops = [], markers: extra = [] }) {
   const canvas = document.createElement('canvas');
   canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width, height });
   canvas.setPointerCapture = vi.fn();
   document.body.replaceChildren(canvas);
-  const handlers = { onClick: vi.fn(), onDrag: vi.fn(), onDragEnd: vi.fn(), onDoubleClick: vi.fn() };
+  const handlers = { onClick: vi.fn(), onDrag: vi.fn(), onDragEnd: vi.fn(), onDoubleClick: vi.fn(), onMarkerClick: vi.fn(), onStopFocus: vi.fn() };
   const renderer = { bounds: [-1000, -1000, 1000, 1000], draw: vi.fn() };
-  const markers = [{ key: 'origin', point: origin, color: '#000', label: null, draggable: true }];
-  const map = createMap({ canvas, renderer, projection, getMarkers: () => markers, contourLabel: String, handlers });
+  const markers = [{ key: 'origin', point: origin, color: '#000', label: null, draggable: true }, ...extra];
+  const map = createMap({ canvas, renderer, projection, getMarkers: () => markers, contourLabel: String, handlers, stops });
   const fire = (type, init = {}) => {
     const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
     Object.assign(event, { pointerId: init.pointerId ?? 1, pointerType: init.pointerType ?? 'touch' });
@@ -82,5 +82,72 @@ describe('createMap before the canvas has a size', () => {
       map.recenter();
       map.reveal(origin);
     }).not.toThrow();
+  });
+});
+
+describe('createMap destination marker and stops', () => {
+  // View fits [-1000, 1000] m in 400x300: scale ~0.138 px/m, so 200 m east of the centre is 28 px away until zoomed in.
+  const east = (metres) => projection.toLatLon([metres, 0]);
+  const stops = [{ point: east(200), name: 'Parada Este' }];
+  const destination = { key: 'destination', point: east(-400), color: '#111', label: null, draggable: false };
+  const zoomed = (extra) => {
+    const ctx = setup({ width: 400, height: 300, stops, markers: [destination], ...extra });
+    ctx.map.zoomBy(2);
+    return ctx;
+  };
+  // After zoomBy(2) around the centre: scale 0.276 -> stop at x = 200 + 55 = 255, destination at x = 200 - 110 = 90.
+
+  it('clicking the destination marker reports it instead of moving the destination', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointerdown', { clientX: 90, clientY: 150, pointerType: 'mouse' });
+    fire('pointerup', { clientX: 90, clientY: 150, pointerType: 'mouse' });
+    expect(handlers.onMarkerClick).toHaveBeenCalledWith('destination');
+    expect(handlers.onClick).not.toHaveBeenCalled();
+  });
+
+  it('hovering a visible stop focuses it; leaving clears it', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointermove', { clientX: 255, clientY: 150, pointerType: 'mouse' });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(0, expect.any(Array));
+    fire('pointermove', { clientX: 300, clientY: 250, pointerType: 'mouse' });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(null, null);
+  });
+
+  it('does not focus stops while zoomed out', () => {
+    const { fire, handlers } = setup({ width: 400, height: 300, stops, markers: [destination] });
+    fire('pointermove', { clientX: 228, clientY: 150, pointerType: 'mouse' });
+    expect(handlers.onStopFocus).not.toHaveBeenCalledWith(0, expect.anything());
+  });
+
+  it('tapping a stop shows its name and still sets the destination there', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointerdown', { clientX: 255, clientY: 150 });
+    fire('pointerup', { clientX: 255, clientY: 150 });
+    expect(handlers.onStopFocus).toHaveBeenCalledWith(0, expect.any(Array));
+    expect(handlers.onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('the touch pointerleave fired after a tap keeps the stop name visible', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointerdown', { clientX: 255, clientY: 150 });
+    fire('pointerup', { clientX: 255, clientY: 150 });
+    fire('pointerleave', { clientX: 255, clientY: 150 });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(0, expect.any(Array));
+  });
+
+  it('a mouse leaving the map hides the tooltip', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointermove', { clientX: 255, clientY: 150, pointerType: 'mouse' });
+    fire('pointerleave', { clientX: 255, clientY: 150, pointerType: 'mouse' });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(null, null);
+  });
+
+  it('tapping empty map hides the tooltip', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointerdown', { clientX: 255, clientY: 150 });
+    fire('pointerup', { clientX: 255, clientY: 150 });
+    fire('pointerdown', { clientX: 330, clientY: 260 });
+    fire('pointerup', { clientX: 330, clientY: 260 });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(null, null);
   });
 });

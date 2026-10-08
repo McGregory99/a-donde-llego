@@ -11,6 +11,7 @@ import { createMap } from './map.js';
 import { createRenderer, COLORS } from './renderer.js';
 import { computeScene, destinationTrip } from './scene.js';
 import { reduce } from './state.js';
+import { bindDismiss } from './dismiss.js';
 import { createToast } from './toast.js';
 import { createProjection } from './view.js';
 
@@ -98,11 +99,21 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
     emit();
   }
 
+  function showStopName(index, screen) {
+    const name = index === null ? '' : data.graph.stops[index]?.name;
+    layout.tooltip.hidden = !name;
+    if (!name) return;
+    layout.tooltip.textContent = name;
+    layout.tooltip.style.left = `${screen[0]}px`;
+    layout.tooltip.style.top = `${screen[1]}px`;
+  }
+
   const map = createMap({
     canvas: layout.canvas,
     renderer,
     projection,
     getMarkers: markers,
+    stops: data.graph.stops.map((stop) => ({ point: [stop.lat, stop.lon] })),
     contourLabel: (minutes) => t('isochrone.label', { minutes }),
     handlers: {
       onClick: (point) => (inCity(point) ? dispatch({ type: 'destination', point }) : notify(t('errors.outOfBounds'))),
@@ -114,6 +125,8 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
         syncUrl();
         emit();
       },
+      onMarkerClick: (key) => key === 'destination' && dispatch({ type: 'destination', point: null }),
+      onStopFocus: showStopName,
       onDoubleClick: (key) => key === 'destination' && dispatch({ type: 'destination', point: null }),
     },
   });
@@ -124,6 +137,8 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
     else if (action === 'zoom-out') map.zoomOut();
     else if (action === 'recenter') map.recenter();
   });
+
+  bindDismiss(document, { getState: () => state, dispatch });
 
   refresh(state, {});
   emit();

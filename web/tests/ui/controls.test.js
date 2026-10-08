@@ -61,23 +61,31 @@ describe('direction (R4.6)', () => {
   });
 });
 
-describe('modes (R4.7)', () => {
-  it('has one labelled checkbox per transit mode of the city, checked by default', () => {
-    const { $ } = setup();
-    const boxes = [...container.querySelectorAll('[data-mode]')];
-    expect(boxes.map((b) => b.dataset.mode).sort()).toEqual(['rail', 'road']);
-    expect(boxes.every((b) => b.checked)).toBe(true);
-    expect(container.textContent).toContain(modeLabel('rail'));
-    expect($('[data-mode="walk"]')).toBeNull();
+describe('travel mode (R4.7)', () => {
+  const radios = () => [...container.querySelectorAll('input[type="radio"][data-travel]')];
+
+  it('offers "transit + a pie" and "Solo a pie" built from the mode labels, transit selected by default', () => {
+    setup();
+    expect(radios().map((r) => r.dataset.travel)).toEqual(['transit', 'walk']);
+    expect(radios().map((r) => r.checked)).toEqual([true, false]);
+    const labels = [...container.querySelectorAll('.segmented label')].map((l) => l.textContent.trim());
+    expect(labels).toEqual([t('controls.withWalk', { transit: `${modeLabel('rail')} / ${modeLabel('road')}` }), t('controls.walkOnly')]);
+    expect(container.querySelector('[data-mode]')).toBeNull();
   });
 
-  it('toggling dispatches and the checkbox follows the state', () => {
-    const { app, $ } = setup();
-    const box = $('[data-mode="road"]');
-    box.checked = false;
-    box.dispatchEvent(new Event('change'));
-    expect(app.dispatch).toHaveBeenCalledWith({ type: 'mode', id: 'road' });
-    expect(app.getState().modes).toEqual(['rail']);
+  it('choosing "Solo a pie" dispatches travel/walk and the radio follows the state, and back', () => {
+    const { app } = setup();
+    const [transit, walk] = radios();
+    walk.checked = true;
+    walk.dispatchEvent(new Event('change'));
+    expect(app.dispatch).toHaveBeenCalledWith({ type: 'travel', choice: 'walk' });
+    expect(app.getState().modes).toEqual([]);
+    expect([transit.checked, walk.checked]).toEqual([false, true]);
+    transit.checked = true;
+    transit.dispatchEvent(new Event('change'));
+    expect(app.dispatch).toHaveBeenCalledWith({ type: 'travel', choice: 'transit' });
+    expect(app.getState().modes).toEqual(['rail', 'road']);
+    expect([transit.checked, walk.checked]).toEqual([true, false]);
   });
 });
 

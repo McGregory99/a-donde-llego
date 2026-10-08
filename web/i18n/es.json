@@ -13,7 +13,9 @@
     "myPosition": "Mi posición",
     "share": "Compartir",
     "shareCopied": "Enlace copiado al portapapeles",
-    "modes": "Modos de transporte",
+    "modes": "Modo de viaje",
+    "withWalk": "{transit} + a pie",
+    "walkOnly": "Solo a pie",
     "scale": "Tiempo máximo: {minutes} min",
     "isochrones": "Isócronas",
     "search": "Buscar una dirección o un lugar",
@@ -35,12 +37,15 @@
   "legend": {
     "departure": "Tiempo de viaje desde el punto de salida",
     "arrival": "Tiempo de viaje hasta el punto de llegada",
+    "departureWalk": "Tiempo a pie desde el punto de salida",
+    "arrivalWalk": "Tiempo a pie hasta el punto de llegada",
     "minutes": "{minutes} min",
     "beyond": "Más de {minutes} min",
     "contours": "Líneas negras: isócronas"
   },
   "itinerary": {
     "title": "Itinerario",
+    "clear": "Quitar destino",
     "total": "Duración total: {minutes} min",
     "notReachable": "No se puede llegar a este punto dentro del tiempo límite."
   },
@@ -73,6 +78,8 @@
   },
   "stats": {
     "title": "En cifras",
+    "show": "Ver cifras",
+    "hide": "Ocultar cifras",
     "reach": "Paradas a menos de {minutes} min del centro",
     "percent": "{value} %",
     "minutes": "{value} min",
