@@ -116,7 +116,10 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
   };
   canvas.addEventListener('pointerup', finish);
   canvas.addEventListener('pointercancel', finish);
-  canvas.addEventListener('pointerleave', () => focusStop(null));
+  // Touch fires pointerleave right after every tap; only a hovering mouse leaving the map hides the name.
+  canvas.addEventListener('pointerleave', (event) => {
+    if (event.pointerType === 'mouse') focusStop(null);
+  });
 
   canvas.addEventListener('dblclick', (event) => {
     if (!view) return;

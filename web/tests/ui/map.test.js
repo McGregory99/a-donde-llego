@@ -127,6 +127,21 @@ describe('createMap destination marker and stops', () => {
     expect(handlers.onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('the touch pointerleave fired after a tap keeps the stop name visible', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointerdown', { clientX: 255, clientY: 150 });
+    fire('pointerup', { clientX: 255, clientY: 150 });
+    fire('pointerleave', { clientX: 255, clientY: 150 });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(0, expect.any(Array));
+  });
+
+  it('a mouse leaving the map hides the tooltip', () => {
+    const { fire, handlers } = zoomed();
+    fire('pointermove', { clientX: 255, clientY: 150, pointerType: 'mouse' });
+    fire('pointerleave', { clientX: 255, clientY: 150, pointerType: 'mouse' });
+    expect(handlers.onStopFocus).toHaveBeenLastCalledWith(null, null);
+  });
+
   it('tapping empty map hides the tooltip', () => {
     const { fire, handlers } = zoomed();
     fire('pointerdown', { clientX: 255, clientY: 150 });
