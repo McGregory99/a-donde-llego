@@ -22,3 +22,9 @@ export function resolveDataFile(root, pathname) {
 export function cleanStaleAssets(outDir) {
   rmSync(join(outDir, 'assets'), { recursive: true, force: true });
 }
+
+/** Public base path of the site: `ADL_BASE` (e.g. `/a-donde-llego/` on GitHub Pages) normalised to `/segment/`, default `/`. */
+export function resolveBase(env = process.env) {
+  const segments = String(env.ADL_BASE ?? '').split('/').filter(Boolean);
+  return segments.length ? `/${segments.join('/')}/` : '/';
+}

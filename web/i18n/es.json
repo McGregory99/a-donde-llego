@@ -76,7 +76,8 @@
     "reach": "Paradas a menos de {minutes} min del centro",
     "percent": "{value} %",
     "minutes": "{value} min",
-    "headway": "Frecuencia mediana",
+    "headway": "Una línea típica pasa cada",
+    "bestHeadway": "La línea más frecuente pasa cada",
     "stops": "Paradas",
     "lines": "Líneas",
     "validityLabel": "Horarios",
@@ -88,7 +89,8 @@
       "served": "Porcentaje de las paradas de la red a las que se llega en {minutes} min o menos, saliendo del centro de la ciudad en un día laborable típico."
     },
     "reachOrigins": "Es el promedio de {count} puntos de salida de referencia.",
-    "headwayDefinition": "Mediana, entre todas las combinaciones de parada y línea, del intervalo medio entre salidas durante la franja horaria de referencia.",
+    "headwayDefinition": "Cada línea cuenta una sola vez, con el intervalo habitual entre salidas en sus paradas durante la franja horaria de referencia; el dato es la mediana de todas las líneas.",
+    "bestHeadwayDefinition": "Intervalo habitual entre salidas de la línea con más servicio en esa misma franja.",
     "expired": "Datos de horarios caducados: el feed dejó de ser válido el {date}. Los tiempos pueden no reflejar el servicio actual."
   },
   "attribution": {

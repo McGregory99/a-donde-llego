@@ -40,3 +40,25 @@ jobs:
       - run: npm ci
       - name: Validate city configs against schema
         run: node scripts/validate-cities.mjs
+
+  # Production-like end to end: fixture city data, vite build with the Pages base, vite preview, headless Chromium.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: uv sync --locked
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/

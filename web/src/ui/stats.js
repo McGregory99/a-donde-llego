@@ -19,12 +19,39 @@ function node(tag, attributes = {}, children = []) {
   return element;
 }
 
-/** Fills `container` with the aggregates computed at build time and the definitions that make them readable. */
+const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+const SCOPES = ['boundary', 'served'];
+
+/** True when every field the panel prints is present and well-typed (a stale or partial stats.json must not break the page). */
+export function isUsableStats(stats) {
+  const { reach, headway, feed } = stats ?? {};
+  return (
+    isNumber(stats?.stops) &&
+    isNumber(stats?.lines) &&
+    typeof stats?.built_on === 'string' &&
+    isNumber(reach?.threshold_min) &&
+    isNumber(reach?.percent_stops) &&
+    isNumber(reach?.origins) &&
+    SCOPES.includes(reach?.scope) &&
+    isNumber(headway?.median_by_line_min) &&
+    isNumber(headway?.best_min) &&
+    typeof feed?.valid_from === 'string' &&
+    typeof feed?.valid_to === 'string'
+  );
+}
+
+/** Fills `container` with the aggregates computed at build time and the definitions that make them readable; hides it when `stats` is absent or unusable. */
 export function renderStats(container, stats, t = defaultT) {
+  container.hidden = !isUsableStats(stats);
+  if (container.hidden) {
+    container.replaceChildren();
+    return;
+  }
   const { reach, headway, feed } = stats;
   const rows = [
     ['reach', t('stats.reach', { minutes: reach.threshold_min }), t('stats.percent', { value: number.format(reach.percent_stops) })],
-    ['headway', t('stats.headway'), t('stats.minutes', { value: number.format(headway.overall_median_min) })],
+    ['headway', t('stats.headway'), t('stats.minutes', { value: number.format(headway.median_by_line_min) })],
+    ['bestHeadway', t('stats.bestHeadway'), t('stats.minutes', { value: number.format(headway.best_min) })],
     ['stops', t('stats.stops'), number.format(stats.stops)],
     ['lines', t('stats.lines'), number.format(stats.lines)],
     ['validity', t('stats.validityLabel'), t('stats.validity', { from: formatDate(feed.valid_from), to: formatDate(feed.valid_to) })],
@@ -33,6 +60,7 @@ export function renderStats(container, stats, t = defaultT) {
     t(`stats.reachDefinition.${reach.scope}`, { minutes: reach.threshold_min }),
     ...(reach.origins > 1 ? [t('stats.reachOrigins', { count: reach.origins })] : []),
     t('stats.headwayDefinition'),
+    t('stats.bestHeadwayDefinition'),
   ];
   container.replaceChildren(
     node('h2', { text: t('stats.title') }),

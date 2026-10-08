@@ -1,6 +1,8 @@
 // Static assets of a city, built offline by the pipeline (dist/data/<city>/*.json).
 
-export const ASSETS = ['meta', 'graph', 'lines', 'boundary', 'basemap', 'stats'];
+// The map needs the required assets; the stats panel is a bonus and the map still works without it.
+export const REQUIRED_ASSETS = ['meta', 'graph', 'lines', 'boundary', 'basemap'];
+export const OPTIONAL_ASSETS = ['stats'];
 
 /** Failure with `key` = i18n key for the user-visible message. */
 export class DataError extends Error {
@@ -27,5 +29,13 @@ export async function loadCityAssets(cityId, names, { fetch = (...args) => globa
   return Object.fromEntries(names.map((name, i) => [name, values[i]]));
 }
 
-/** Every asset of `cityId`; all-or-nothing. */
-export const loadCityData = (cityId, options) => loadCityAssets(cityId, ASSETS, options);
+/** The required assets of `cityId` (all-or-nothing) plus the optional ones, each `null` when it cannot be loaded. */
+export async function loadCityData(cityId, options) {
+  const [required, ...optional] = await Promise.all([
+    loadCityAssets(cityId, REQUIRED_ASSETS, options),
+    ...OPTIONAL_ASSETS.map((name) =>
+      loadCityAssets(cityId, [name], options).then((assets) => assets[name], () => null),
+    ),
+  ]);
+  return { ...required, ...Object.fromEntries(OPTIONAL_ASSETS.map((name, i) => [name, optional[i]])) };
+}

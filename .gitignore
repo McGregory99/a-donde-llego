@@ -16,3 +16,4 @@ playwright-report/
 
 # OS / editor
 .DS_Store
+dist-e2e/
