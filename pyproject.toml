@@ -3,10 +3,14 @@ name = "a-donde-llego"
 version = "0.1.0"
 description = "Offline pipeline that builds static travel-time data for a-donde-llego."
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "jsonschema>=4.26.0",
+]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+]
 
 [tool.uv]
 package = false

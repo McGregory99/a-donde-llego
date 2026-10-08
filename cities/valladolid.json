@@ -1,0 +1,33 @@
+{
+  "id": "valladolid",
+  "name": "Valladolid",
+  "bbox": [-4.9281803, 41.5231281, -4.6308064, 41.8155086],
+  "center": [41.62, -4.72599],
+  "locale": "es",
+  "geocoder": { "provider": "photon" },
+  "boundary": { "osm_relation_id": 348849 },
+  "gtfs": {
+    "sources": ["http://212.170.201.204:50080/GTFSRTapi/api/GTFSFile"],
+    "license": "CC BY 3.0 ES",
+    "attribution": "Fuente: AUVASA"
+  },
+  "attribution": [
+    {
+      "name": "AUVASA",
+      "url": "https://www.auvasa.es/empresa/datos-abiertos/",
+      "license": "CC BY 3.0 ES",
+      "text": "Fuente: AUVASA"
+    }
+  ],
+  "modes": {
+    "walk": { "kind": "walk", "speed_m_per_min": 75, "detour_factor": 1.0, "max_access_m": 1000 },
+    "bus": {
+      "kind": "transit",
+      "route_types": [3],
+      "wait": { "factor": 0.5, "min": 1, "max": 15 },
+      "transfer_min": 1.5,
+      "enabled_default": true
+    }
+  },
+  "window": { "start": "07:00", "end": "20:00" }
+}
