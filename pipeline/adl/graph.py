@@ -255,14 +255,10 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
     return Graph(ref, stops, lines, waits, rides, exported, transit, neighbors, headways, streets, snaps)
 
 
-def travel_times(
-    graph: Graph,
-    origin: tuple[float, float],
-    points: list[tuple[float, float]],
-    enabled_modes: set[str] | None = None,
-) -> list[float | None]:
-    """Minimum minutes from ``origin`` to each point (None: unreachable).
+def _ride_search(graph: Graph, origin: tuple[float, float], enabled_modes: set[str] | None):
+    """Transit search from ``origin``: ``(egress, from_origin, street_walk, street, max_snap)``.
 
+    ``egress`` maps a stop to the minutes needed to alight there; the rest only matter in streets mode.
     Nodes: ``("S", stop)`` walked-to stop where boarding is possible,
     ``("B", stop, line)`` just boarded (nothing ridden yet) and
     ``("R", stop, line)`` after at least one ride hop. Only ridden nodes can
@@ -334,10 +330,22 @@ def travel_times(
     for (kind, stop, *_), cost in best.items():
         if kind == "R":
             egress[stop] = min(egress.get(stop, math.inf), cost)
+    return egress, from_origin, street_walk, street, max_snap
 
+
+def travel_times(
+    graph: Graph,
+    origin: tuple[float, float],
+    points: list[tuple[float, float]],
+    enabled_modes: set[str] | None = None,
+) -> list[float | None]:
+    """Minimum minutes from ``origin`` to each point (None: unreachable); see ``_ride_search`` for the model."""
+    egress, from_origin, street_walk, street, max_snap = _ride_search(graph, origin, enabled_modes)
+    walk, max_access = graph.walk, graph.walk["max_access_m"]
     if street:
         return _street_results(graph, street, points, egress,
                                from_origin=from_origin, street_walk=street_walk, max_snap=max_snap)
+    coords = [(s["lat"], s["lon"]) for s in graph.stops]
     results: list[float | None] = []
     for p in points:
         options = []
@@ -350,6 +358,22 @@ def travel_times(
                 options.append(cost + walk_minutes(d, walk))
         results.append(min(options) if options else None)
     return results
+
+
+def node_times(graph: Graph, origin: tuple[float, float], enabled_modes: set[str] | None = None) -> list[float | None]:
+    """Minimum minutes from ``origin`` to every street node (None: unreachable), as ``travel_times`` gives
+    for a point lying on that node. Needs a streets walk network."""
+    egress, from_origin, street_walk, street, _ = _ride_search(graph, origin, enabled_modes)
+    if street is None:
+        raise GraphError("node_times needs a street graph (walk network 'streets')")
+    walk = graph.walk
+    best = [math.inf] * len(street.lat)
+    for node, metres in from_origin.items():
+        best[node] = min(best[node], street_minutes(metres, walk))
+    for stop, cost in egress.items():
+        for node, metres in street_walk(graph.stop_snaps[stop]).items():
+            best[node] = min(best[node], cost + street_minutes(metres, walk))
+    return [None if b == math.inf else b for b in best]
 
 
 def _street_results(graph, street, points, egress, *, from_origin, street_walk, max_snap):
