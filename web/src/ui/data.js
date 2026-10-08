@@ -1,4 +1,5 @@
 // Static assets of a city, built offline by the pipeline (dist/data/<city>/*.json).
+import { decodeWalk } from '../core/streets.js';
 
 // The map needs the required assets; the stats panel is a bonus and the map still works without it.
 export const REQUIRED_ASSETS = ['meta', 'graph', 'lines', 'boundary', 'basemap'];
@@ -29,7 +30,10 @@ export async function loadCityAssets(cityId, names, { fetch = (...args) => globa
   return Object.fromEntries(names.map((name, i) => [name, values[i]]));
 }
 
-/** The required assets of `cityId` (all-or-nothing) plus the optional ones, each `null` when it cannot be loaded. */
+/**
+ * The required assets of `cityId` (all-or-nothing) plus the optional ones, each `null` when it cannot be loaded.
+ * A city whose walk network is "streets" also needs walk.json: it is decoded onto `graph.streets` (not returned).
+ */
 export async function loadCityData(cityId, options) {
   const [required, ...optional] = await Promise.all([
     loadCityAssets(cityId, REQUIRED_ASSETS, options),
@@ -37,5 +41,9 @@ export async function loadCityData(cityId, options) {
       loadCityAssets(cityId, [name], options).then((assets) => assets[name], () => null),
     ),
   ]);
+  if (required.graph?.walk?.network === 'streets') {
+    const { walk } = await loadCityAssets(cityId, ['walk'], options);
+    required.graph.streets = decodeWalk(walk);
+  }
   return { ...required, ...Object.fromEntries(OPTIONAL_ASSETS.map((name, i) => [name, optional[i]])) };
 }

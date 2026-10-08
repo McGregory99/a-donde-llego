@@ -3,6 +3,7 @@
 import { labelSpot } from './contours.js';
 import { pointInPolygons } from '../core/geo.js';
 import { stopsVisible } from './stops.js';
+import { BASE_STYLE, bucketColor, edgeBuckets, pathsVisible, streetWidth } from './street-paint.js';
 import { boundsOf, toScreen } from './view.js';
 
 export const COLORS = {
@@ -25,6 +26,29 @@ export function lineColor(key) {
   let hash = 0;
   for (const char of String(key)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return `hsl(${hash % 360} 55% 38%)`;
+}
+
+/** Appends edge `e` of the street graph to `path` as a world polyline: lower node, shape points, higher node. */
+function addEdge(path, walk, world, e) {
+  const a = walk.edgeA[e];
+  const b = walk.edgeB[e];
+  path.moveTo(world.x[a], world.y[a]);
+  for (let k = walk.shapeStart[e]; k < walk.shapeStart[e + 1]; k += 1) path.lineTo(world.shapeX[k], world.shapeY[k]);
+  path.lineTo(world.x[b], world.y[b]);
+}
+
+/** World coordinates of every street node and shape point, plus one base Path2D per road class. */
+function streetPaths(walk, toWorld) {
+  const x = new Float64Array(walk.n);
+  const y = new Float64Array(walk.n);
+  for (let i = 0; i < walk.n; i += 1) [x[i], y[i]] = toWorld([walk.lat[i], walk.lon[i]]);
+  const shapeX = new Float64Array(walk.shapeLat.length);
+  const shapeY = new Float64Array(walk.shapeLat.length);
+  for (let k = 0; k < shapeX.length; k += 1) [shapeX[k], shapeY[k]] = toWorld([walk.shapeLat[k], walk.shapeLon[k]]);
+  const world = { x, y, shapeX, shapeY };
+  const classes = [new Path2D(), new Path2D(), new Path2D()];
+  for (let e = 0; e < walk.edges; e += 1) addEdge(classes[walk.edgeCls[e]] ?? classes[1], walk, world, e);
+  return { world, classes };
 }
 
 const addRing = (path, ring, toWorld) => {
@@ -69,7 +93,9 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
   });
   const stops = graph.stops.map((stop) => toWorld([stop.lat, stop.lon]));
 
-  const layers = { heat: null, contours: [], trip: null };
+  const layers = { heat: null, contours: [], trip: null, streetTimes: null };
+  const walk = graph.walk?.network === 'streets' ? graph.streets : null;
+  const streetBase = walk ? streetPaths(walk, toWorld) : null;
 
   function worldTransform(view, size, dpr) {
     ctx.setTransform(
@@ -116,6 +142,35 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     ctx.fillText(label, left + width / 2, y - 30.5);
   }
 
+  /** Streets in the neutral style, then every edge with a travel time over it in its colour. */
+  function drawStreets(view, size) {
+    const px = 1 / view.scale;
+    worldTransform(view, size, size.dpr);
+    ctx.save();
+    ctx.clip(land, 'evenodd'); // streets are only drawn inside the city boundary, like the heat was
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    BASE_STYLE.forEach((style, cls) => {
+      if (cls === 0 && !pathsVisible(view.scale)) return;
+      ctx.strokeStyle = style.color;
+      ctx.lineWidth = streetWidth(cls, view.scale) * px;
+      ctx.setLineDash(style.dash ? [4 * px, 3 * px] : []);
+      ctx.stroke(streetBase.classes[cls]);
+    });
+    ctx.setLineDash([]);
+    if (layers.streetTimes) {
+      layers.streetTimes.forEach((paths, cls) => {
+        if (cls === 0 && !pathsVisible(view.scale)) return;
+        ctx.lineWidth = streetWidth(cls, view.scale) * px;
+        paths.forEach(({ color, path }) => {
+          ctx.strokeStyle = color;
+          ctx.stroke(path);
+        });
+      });
+    }
+    ctx.restore();
+  }
+
   function drawContours(view, size, markers) {
     const px = 1 / view.scale;
     const avoid = markers.map(({ point }) => toScreen(view, size, toWorld(point)));
@@ -158,6 +213,25 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       layers.heat = { canvas: heat };
     },
 
+    /**
+     * Street travel times: `times` = minutes per street node (Infinity unreachable), `maxMinutes` the colour scale.
+     * Edges are grouped by road class and colour bucket so a frame costs a few dozen strokes, not one per edge.
+     */
+    setStreetTimes(times, maxMinutes) {
+      if (!walk) return;
+      const buckets = edgeBuckets(walk, times, maxMinutes);
+      const grouped = [0, 1, 2].map(() => new Map());
+      for (let e = 0; e < walk.edges; e += 1) {
+        const bucket = buckets[e];
+        if (bucket < 0) continue;
+        const byBucket = grouped[walk.edgeCls[e]] ?? grouped[1];
+        let entry = byBucket.get(bucket);
+        if (!entry) byBucket.set(bucket, (entry = { color: bucketColor(bucket, maxMinutes), path: new Path2D() }));
+        addEdge(entry.path, walk, streetBase.world, e);
+      }
+      layers.streetTimes = grouped.map((byBucket) => [...byBucket.entries()].sort((a, b) => a[0] - b[0]).map(([, entry]) => entry));
+    },
+
     /** Contour segments per threshold, as returned by isochrones(): { [minutes]: [[[lat, lon], [lat, lon]], ...] }. */
     setContours(contours) {
       layers.contours = Object.entries(contours)
@@ -189,7 +263,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       worldTransform(view, size, dpr);
       ctx.fillStyle = COLORS.land;
       ctx.fill(land, 'evenodd');
-      if (layers.heat) {
+      if (layers.heat && !walk) {
         ctx.save();
         ctx.clip(land, 'evenodd'); // never paint outside the city boundary
         ctx.globalAlpha = HEAT_ALPHA;
@@ -205,6 +279,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       ctx.strokeStyle = COLORS.boundary;
       ctx.lineWidth = 1.1 * px;
       ctx.stroke(land);
+      if (walk) drawStreets(view, size);
 
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';

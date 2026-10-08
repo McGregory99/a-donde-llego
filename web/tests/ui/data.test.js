@@ -55,6 +55,32 @@ describe('loadCityData', () => {
   });
 });
 
+describe('loadCityData for a city that walks along streets', () => {
+  const walkAsset = { schema: 1, scale: 100000, n: 2, lat: [4160000, 10], lon: [-470000, 0], deg: [1, 0], to: [1], m: [100], cls: [1], geo: [0], glat: [], glon: [], stops: { node: [0], snap_m: [4] } };
+  const streetAssets = { ...assets, graph: { stops: [{}], lines: [], walk: { network: 'streets' } }, walk: walkAsset };
+  const serve = (all) => vi.fn((url) => (all[url.split('/').pop().replace('.json', '')] ? ok(all[url.split('/').pop().replace('.json', '')]) : Promise.resolve({ ok: false, status: 404 })));
+
+  it('fetches walk.json and decodes it onto the graph', async () => {
+    const data = await loadCityData('x', { fetch: serve(streetAssets), base: '/data/' });
+    expect(data.graph.streets.n).toBe(2);
+    expect(Array.from(data.graph.streets.stopNode)).toEqual([0]);
+    expect(data.walk).toBeUndefined();
+  });
+
+  it('fails with the data error when the street graph is missing', async () => {
+    const { walk, ...without } = streetAssets;
+    const error = await loadCityData('x', { fetch: serve(without), base: '/data/' }).catch((e) => e);
+    expect(error).toBeInstanceOf(DataError);
+    expect(error.message).toMatch(/walk\.json/);
+  });
+
+  it('never asks for walk.json when the city walks in straight lines', async () => {
+    const fetch = serve(assets);
+    await loadCityData('x', { fetch, base: '/data/' });
+    expect(fetch.mock.calls.some(([url]) => url.includes('walk'))).toBe(false);
+  });
+});
+
 describe('loadCityAssets', () => {
   it('fetches only the named assets (the about page needs just meta)', async () => {
     const fetch = vi.fn((url) => ok(assets[url.split('/').pop().replace('.json', '')]));

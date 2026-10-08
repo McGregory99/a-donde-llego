@@ -2,8 +2,8 @@
 import { expect, test } from '@playwright/test';
 
 const CITY = '?c=valladolid';
-// Origin next to fixture stop S1; the view fits the fixture stops, so the canvas centre is a few hundred metres from S2.
-const ORIGIN = 'o=41.601,-4.749';
+// Origin on the street fixture stop S1 snaps to (walking follows the real Valladolid streets of the committed OSM cache).
+const ORIGIN = 'o=41.59986,-4.74982';
 
 const consoleErrors = [];
 test.beforeEach(({ page }) => {
@@ -21,9 +21,30 @@ const open = async (page, query = `${CITY}&${ORIGIN}`) => {
   await expect(page.locator('.stats [data-stat="stops"]')).toHaveText('4');
 };
 
-const clickCentre = async (page) => {
-  const box = await page.locator('#map').boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+// Walking follows streets, so a click must land within 150 m of one: the fixture stops all sit by a street.
+// Zooms in, sweeps synthetic mouse moves for the stop named `name` and returns its page position. "Two" is
+// 22 min from the origin by the S1 -> S2 bus, inside the default colour scale.
+const findStop = async (page, name = 'Two') => {
+  for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
+  return page.evaluate((wanted) => {
+    const canvas = document.getElementById('map');
+    const rect = canvas.getBoundingClientRect();
+    const tip = document.querySelector('.stop-tooltip');
+    for (let y = 4; y < rect.height; y += 4) {
+      for (let x = 4; x < rect.width; x += 4) {
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + x, clientY: rect.top + y, pointerId: 7, pointerType: 'mouse', bubbles: true }));
+        if (!tip.hidden && tip.textContent === wanted) return { x: rect.left + x, y: rect.top + y };
+      }
+    }
+    return null;
+  }, name);
+};
+
+const clickStop = async (page) => {
+  const stop = await findStop(page);
+  expect(stop).not.toBeNull();
+  await page.mouse.click(stop.x, stop.y);
+  return stop;
 };
 
 test('loads the city from the static data and shows the stats panel', async ({ page }) => {
@@ -34,24 +55,47 @@ test('loads the city from the static data and shows the stats panel', async ({ p
   await expect(page.locator('.attribution')).toContainText('AUVASA');
 });
 
-test('paints the heat map on the canvas', async ({ page }) => {
+const canvasColours = (page) =>
+  page.evaluate(() => {
+    const canvas = document.getElementById('map');
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const counts = { distinct: new Set(), green: 0, red: 0, grey: 0 };
+    for (let i = 0; i < data.length; i += 4) {
+      const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+      if (i % 97 === 0) counts.distinct.add(`${r},${g},${b}`);
+      if (g > r + 40 && g > b + 60) counts.green += 1; // the near end of the ramp
+      else if (r > g + 60 && r > b + 60) counts.red += 1; // the far end
+      else if (Math.abs(r - g) < 6 && Math.abs(g - b) < 12 && r > 150 && r < 200) counts.grey += 1; // neutral streets
+    }
+    return { ...counts, distinct: counts.distinct.size };
+  });
+
+test('paints streets: travel-time colours on the street segments and the neutral grey for the rest', async ({ page }) => {
   await open(page);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const canvas = document.getElementById('map');
-        const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-        const colours = new Set();
-        for (let i = 0; i < data.length; i += 4 * 97) colours.add(`${data[i]},${data[i + 1]},${data[i + 2]},${data[i + 3]}`);
-        return colours.size;
-      }),
-    )
-    .toBeGreaterThan(3);
+  for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
+  await expect.poll(async () => (await canvasColours(page)).distinct).toBeGreaterThan(3);
+  const colours = await canvasColours(page);
+  expect(colours.green).toBeGreaterThan(0); // streets close to the origin are green
+  expect(colours.grey).toBeGreaterThan(0); // streets beyond the scale keep the base style
+});
+
+test('streets are painted as lines, not as an area fill', async ({ page }) => {
+  await open(page);
+  for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
+  const share = await page.evaluate(() => {
+    const canvas = document.getElementById('map');
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let coloured = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i + 1] > data[i] + 40 && data[i + 1] > data[i + 2] + 60) coloured += 1;
+    return coloured / (canvas.width * canvas.height);
+  });
+  expect(share).toBeGreaterThan(0);
+  expect(share).toBeLessThan(0.25); // a raster fill would colour most of the walkable disc; streets leave gaps
 });
 
 test('clicking the map shows an itinerary and records the destination in the URL', async ({ page }) => {
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel')).toBeVisible();
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   expect(page.url()).toMatch(/[?&]d=/);
@@ -59,7 +103,7 @@ test('clicking the map shows an itinerary and records the destination in the URL
 
 test('invert swaps the direction and inverting again restores the itinerary', async ({ page }) => {
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   await page.click('[data-action="invert"]');
   await expect.poll(() => page.url()).toMatch(/dir=arrival/);
@@ -73,7 +117,7 @@ test('invert swaps the direction and inverting again restores the itinerary', as
 
 test('a shared URL reproduces the same state in a fresh page', async ({ page, browser }) => {
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await page.locator('input[type=range]').fill('90');
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   const shared = page.url();
@@ -115,14 +159,14 @@ test('the map still loads when stats.json is missing and the stats panel stays h
   expect(page.url()).toMatch(/\/\?c=valladolid&/);
   await expect(page.locator('#map')).toBeVisible();
   await expect(page.locator('.stats')).toBeHidden();
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
   consoleErrors.length = 0; // the browser logs the intentional 404
 });
 
 test('the close button removes the destination, the itinerary and the d parameter', async ({ page }) => {
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel')).toBeVisible();
   expect(page.url()).toMatch(/[?&]d=/);
   await page.getByRole('button', { name: 'Quitar destino' }).click();
@@ -132,7 +176,7 @@ test('the close button removes the destination, the itinerary and the d paramete
 
 test('Escape removes the destination', async ({ page }) => {
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.trip-panel')).toBeHidden();
@@ -141,9 +185,9 @@ test('Escape removes the destination', async ({ page }) => {
 
 test('clicking the arrival marker removes it instead of moving it', async ({ page }) => {
   await open(page);
-  await clickCentre(page);
+  const stop = await clickStop(page);
   await expect(page.locator('.trip-panel')).toBeVisible();
-  await clickCentre(page); // the marker sits where the first click landed
+  await page.mouse.click(stop.x, stop.y); // the marker sits where the first click landed
   await expect(page.locator('.trip-panel')).toBeHidden();
   expect(page.url()).not.toMatch(/[?&]d=/);
 });
@@ -153,7 +197,7 @@ test('"Solo a pie" and back changes the reachable trip and persists in the URL',
   const transit = page.getByRole('radio', { name: /\+ a pie$/ });
   const walkOnly = page.getByRole('radio', { name: 'Solo a pie' });
   await expect(transit).toBeChecked();
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel li').first()).toBeVisible();
 
   await walkOnly.check();
@@ -213,7 +257,7 @@ const noOverlaps = (boxes) => {
 test('desktop: the map fills the viewport and the stats card toggles without covering other panels', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel')).toBeVisible();
   const map = await page.locator('#map').boundingBox();
   expect(map).toMatchObject({ x: 0, y: 0, width: 1280, height: 720 });
@@ -236,7 +280,7 @@ test('desktop: the map fills the viewport and the stats card toggles without cov
 test('mobile: the map fills the screen, the stats start collapsed and nothing overlaps', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
-  await clickCentre(page);
+  await clickStop(page);
   await expect(page.locator('.trip-panel')).toBeVisible();
   expect(await page.locator('#map').boundingBox()).toMatchObject({ x: 0, y: 0, width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
