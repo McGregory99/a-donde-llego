@@ -36,7 +36,11 @@ export default defineConfig({
   plugins: [serveCityData(), cleanBuildAssets()],
   server: { fs: { allow: ['..'] } },
   // dist/data holds the pipeline output next to the site, so the build must not wipe it.
-  build: { outDir: '../dist', emptyOutDir: false },
+  build: {
+    outDir: '../dist',
+    emptyOutDir: false,
+    rollupOptions: { input: { index: resolve('web/index.html'), acerca: resolve('web/acerca.html') } },
+  },
   test: {
     root: '.',
     include: ['web/tests/**/*.test.js'],
