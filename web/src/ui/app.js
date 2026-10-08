@@ -1,0 +1,147 @@
+// Application: state container + scene recomputation + wiring of map, legend and URL (R4.x, R7.3).
+import { createGrid } from '../core/grid.js';
+import { pointInPolygons } from '../core/geo.js';
+import { isochrones } from '../core/isochrone.js';
+import { t as defaultT } from '../i18n.js';
+import { cityDefaults, parseState, serializeState } from '../state-url.js';
+import { heatPixels } from './heat.js';
+import { legendModel, renderLegend } from './legend.js';
+import { buildLayout } from './layout.js';
+import { createMap } from './map.js';
+import { createRenderer, COLORS } from './renderer.js';
+import { computeScene, destinationTrip } from './scene.js';
+import { reduce } from './state.js';
+import { createToast } from './toast.js';
+import { createProjection } from './view.js';
+
+const CELL_M = 100;
+const HEAT_UPSAMPLE = { full: 3, drag: 1 };
+
+const inBbox = ([west, south, east, north], [lat, lon]) => lat >= south && lat <= north && lon >= west && lon <= east;
+
+/**
+ * Mounts the app on `root`. `config` is the city config, `data` the loaded assets. Returns
+ * { getState, dispatch, subscribe, layout, notify, inCity, map } for the control modules.
+ */
+export function createApp({ config, data, root, search = '', t = defaultT, history = window.history, location = window.location }) {
+  const city = cityDefaults(config);
+  const projection = createProjection(config.center);
+  const grid = createGrid(config.bbox, CELL_M);
+  const layout = buildLayout(root, t);
+  const notify = createToast(layout.toast);
+  const { state: initial, ignored } = parseState(search, city);
+
+  let state = initial;
+  let scene = null;
+  let trip = null;
+  const listeners = new Set();
+
+  const inCity = (point) =>
+    inBbox(config.bbox, point) && (!data.boundary.polygons.length || pointInPolygons(data.boundary.polygons, point));
+
+  const renderer = createRenderer(layout.canvas, { data, projection, bbox: config.bbox, graph: data.graph });
+
+  function paintHeat(upsample) {
+    renderer.setHeat(heatPixels(scene.times, grid.cols, grid.rows, state.scale, upsample));
+  }
+
+  /** Recomputes only what `previous` -> `state` invalidated. */
+  function refresh(previous, { fast = false } = {}) {
+    const moved =
+      !scene ||
+      previous.origin !== state.origin ||
+      previous.direction !== state.direction ||
+      previous.modes !== state.modes;
+    if (moved) {
+      scene = computeScene(data.graph, grid, state);
+      renderer.setContours(scene.contours);
+      paintHeat(fast ? HEAT_UPSAMPLE.drag : HEAT_UPSAMPLE.full);
+    } else {
+      if (previous.isochrones !== state.isochrones) {
+        scene = { ...scene, contours: isochrones(grid, scene.times, state.isochrones) };
+        renderer.setContours(scene.contours);
+      }
+      if (previous.scale !== state.scale) paintHeat(HEAT_UPSAMPLE.full);
+    }
+    trip = destinationTrip(data.graph, state);
+    renderer.setTrip(trip?.reachable ? trip.path : null);
+  }
+
+  function markers() {
+    const arrival = state.direction === 'arrival';
+    const list = [
+      { key: 'origin', point: state.origin, color: COLORS.origin, draggable: true, label: t(arrival ? 'controls.arrival' : 'controls.departure') },
+    ];
+    if (state.destination) {
+      const label = trip?.reachable ? t('legend.minutes', { minutes: Math.max(1, Math.round(trip.total)) }) : null;
+      list.push({ key: 'destination', point: state.destination, color: COLORS.destination, draggable: false, label });
+    }
+    return list;
+  }
+
+  function syncUrl() {
+    history.replaceState(null, '', `?${serializeState(state)}`);
+  }
+
+  function emit() {
+    renderLegend(layout.legend, legendModel(state), t);
+    map.requestRender();
+    for (const listener of listeners) listener(state, { trip });
+  }
+
+  function dispatch(action, options = {}) {
+    const previous = state;
+    state = reduce(state, action, city);
+    if (state === previous) return;
+    refresh(previous, options);
+    if (!options.quiet) syncUrl();
+    emit();
+  }
+
+  const map = createMap({
+    canvas: layout.canvas,
+    renderer,
+    projection,
+    getMarkers: markers,
+    contourLabel: (minutes) => t('isochrone.label', { minutes }),
+    handlers: {
+      onClick: (point) => (inCity(point) ? dispatch({ type: 'destination', point }) : notify(t('errors.outOfBounds'))),
+      onDrag: (key, point) => {
+        if (key === 'origin' && inCity(point)) dispatch({ type: 'origin', point }, { quiet: true, fast: true });
+      },
+      onDragEnd: () => {
+        paintHeat(HEAT_UPSAMPLE.full);
+        syncUrl();
+        emit();
+      },
+      onDoubleClick: (key) => key === 'destination' && dispatch({ type: 'destination', point: null }),
+    },
+  });
+
+  layout.zoom.addEventListener('click', (event) => {
+    const action = event.target.closest('button')?.dataset.action;
+    if (action === 'zoom-in') map.zoomIn();
+    else if (action === 'zoom-out') map.zoomOut();
+    else if (action === 'recenter') map.recenter();
+  });
+
+  refresh(state, {});
+  emit();
+  if (ignored.length) notify(t('errors.invalidLink'));
+
+  return {
+    getState: () => state,
+    dispatch,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    layout,
+    notify,
+    inCity,
+    map,
+    city,
+    projection,
+    trip: () => trip,
+  };
+}
