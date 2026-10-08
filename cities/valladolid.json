@@ -2,9 +2,13 @@
   "id": "valladolid",
   "name": "Valladolid",
   "bbox": [-4.9281803, 41.5231281, -4.6308064, 41.8155086],
-  "center": [41.62, -4.72599],
+  "center": [41.6523, -4.7245],
   "locale": "es",
-  "geocoder": { "provider": "photon" },
+  "geocoder": {
+    "provider": "photon",
+    "endpoint": "https://photon.komoot.io/api/",
+    "reverse": { "provider": "nominatim", "endpoint": "https://nominatim.openstreetmap.org/reverse" }
+  },
   "boundary": { "osm_relation_id": 348849 },
   "gtfs": {
     "sources": ["http://212.170.201.204:50080/GTFSRTapi/api/GTFSFile"],

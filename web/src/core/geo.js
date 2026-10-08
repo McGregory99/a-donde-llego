@@ -17,3 +17,21 @@ export function distanceM(a, b) {
 export function walkMinutes(distance, walk) {
   return (distance * walk.detour_factor) / walk.speed_m_per_min;
 }
+
+function inRing(point, ring) {
+  const [y, x] = point;
+  let inside = false;
+  for (let i = 1; i < ring.length; i += 1) {
+    const [y1, x1] = ring[i - 1];
+    const [y2, x2] = ring[i];
+    if (y1 > y !== y2 > y && x < ((x2 - x1) * (y - y1)) / (y2 - y1) + x1) inside = !inside;
+  }
+  return inside;
+}
+
+/** True when `point` lies in any polygon of a boundary asset ([[outer, ...holes], ...], rings of [lat, lon]). */
+export function pointInPolygons(polygons, point) {
+  return polygons.some(
+    ([outer, ...holes]) => inRing(point, outer) && !holes.some((hole) => inRing(point, hole)),
+  );
+}

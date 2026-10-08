@@ -101,10 +101,14 @@ describe('performance (R4.8)', () => {
     const start = big.stops[big.rides[0][1]];
     const origin = [start.lat, start.lon];
     computeGrid(city, big, [41.62, -4.72]); // warm-up (prepares lookup tables, JIT)
-    const started = performance.now();
-    const times = computeGrid(city, big, origin);
-    const elapsed = performance.now() - started;
-    expect(times.some((t) => t > 15)).toBe(true);
+    // Median of several runs: one GC pause or a busy CI core must not fail the budget.
+    const runs = Array.from({ length: 5 }, () => {
+      const started = performance.now();
+      const times = computeGrid(city, big, origin);
+      return { elapsed: performance.now() - started, times };
+    });
+    const elapsed = runs.map((r) => r.elapsed).sort((a, b) => a - b)[2];
+    expect(runs[0].times.some((t) => t > 15)).toBe(true);
     expect(elapsed).toBeLessThan(1000);
   });
 });

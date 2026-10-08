@@ -63,11 +63,11 @@ function accessibleStops(graph, point) {
 }
 
 /**
- * Minutes per stop for one point: departing from it (forward, time at which a stop
- * can be left after riding) or arriving at it (reverse, time to reach it from a
- * stop where boarding is possible). Infinity when unreachable.
+ * Search from `point`; returns { out, trace }. With `trace` true, `trace.parent` holds the
+ * predecessor node of every settled node (-1 at a root) and `trace.outNode[stop]` the node
+ * that produced out[stop], so a path can be rebuilt (see itinerary.js). Off, nothing is recorded.
  */
-export function stopTimes(graph, point, { enabled = null, reverse = false } = {}) {
+export function searchStops(graph, point, { enabled = null, reverse = false, trace = false } = {}) {
   const t = prepare(graph, enabled);
   const { stops, lines } = t;
   const total = stops * lines;
@@ -75,10 +75,14 @@ export function stopTimes(graph, point, { enabled = null, reverse = false } = {}
   const nodeB = (s, l) => stops + s * lines + l;
   const nodeR = (s, l) => stops + total + s * lines + l;
   const best = new Float64Array(stops + 2 * total).fill(Infinity);
+  const parent = trace ? new Int32Array(best.length).fill(-1) : null;
+  const outNode = trace ? new Int32Array(stops).fill(-1) : null;
   const heap = new MinHeap();
+  let current = -1;
   const push = (cost, node) => {
     if (cost < best[node]) {
       best[node] = cost;
+      if (parent) parent[node] = current;
       heap.push(cost, node);
     }
   };
@@ -94,9 +98,12 @@ export function stopTimes(graph, point, { enabled = null, reverse = false } = {}
   while (heap.size) {
     const [cost, node] = heap.pop();
     if (cost > best[node]) continue;
+    current = node;
     if (node < stops) {
-      if (reverse) out[node] = cost;
-      else for (const [l, w] of t.boards[node]) push(cost + w, nodeB(node, l));
+      if (reverse) {
+        out[node] = cost;
+        if (outNode) outNode[node] = node;
+      } else for (const [l, w] of t.boards[node]) push(cost + w, nodeB(node, l));
       continue;
     }
     const isR = node >= stops + total;
@@ -121,14 +128,26 @@ export function stopTimes(graph, point, { enabled = null, reverse = false } = {}
     }
     for (const [next, m] of t.rideFrom.get(key) ?? []) push(cost + m, nodeR(next, line));
     if (!isR) continue;
-    out[stop] = Math.min(out[stop], cost);
+    if (cost < out[stop]) {
+      out[stop] = cost;
+      if (outNode) outNode[stop] = node;
+    }
     for (const [target, walk] of [[stop, 0], ...graph.neighbors[stop]]) {
       for (const [other, w] of t.boards[target]) {
         if (other !== line) push(cost + t.penalty[other] + walk + w, nodeB(target, other));
       }
     }
   }
-  return out;
+  return { out, trace: trace ? { parent, outNode, tables: t } : null };
+}
+
+/**
+ * Minutes per stop for one point: departing from it (forward, time at which a stop
+ * can be left after riding) or arriving at it (reverse, time to reach it from a
+ * stop where boarding is possible). Infinity when unreachable.
+ */
+export function stopTimes(graph, point, options = {}) {
+  return searchStops(graph, point, { ...options, trace: false }).out;
 }
 
 /**
