@@ -3,7 +3,7 @@
 import { labelSpot } from './contours.js';
 import { pointInPolygons } from '../core/geo.js';
 import { stopsVisible } from './stops.js';
-import { BASE_STYLE, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx } from './street-paint.js';
+import { BASE_STYLE, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx, ticksVisible } from './street-paint.js';
 import { layerCovers, layerFor, layerOffset } from './layer-cache.js';
 import { boundsOf, toScreen } from './view.js';
 
@@ -217,7 +217,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     const avoid = markers.map(({ point }) => toScreen(view, size, toWorld(point)));
     const labels = [];
     for (const { minutes, path: fixedPath, segments, ticks } of layers.contours) {
-      if (!segments.length) continue;
+      if (!segments.length || (ticks && !ticksVisible(view.scale))) continue;
       const path = ticks ? tickPath(ticks, tickHalfPx(view.scale) * px) : fixedPath;
       worldTransform(view, size, size.dpr);
       ctx.save();

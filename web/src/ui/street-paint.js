@@ -60,3 +60,8 @@ const TICK_METRES = 45; // half length of an isochrone tick across a street (see
 
 /** Half length in pixels of an isochrone tick at `scale` pixels per metre: its real length, kept between 2 and 7 px. */
 export const tickHalfPx = (scale) => Math.min(7, Math.max(2, TICK_METRES * scale));
+
+const TICKS_FROM_SCALE = 0.15; // pixels per metre: about 8 km across a laptop screen
+
+/** True when isochrone ticks are drawn: zoomed out, the street colours already show the fronts. */
+export const ticksVisible = (scale) => scale >= TICKS_FROM_SCALE;

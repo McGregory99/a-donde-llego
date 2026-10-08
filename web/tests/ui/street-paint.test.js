@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { decodeWalk } from '../../src/core/streets.js';
 import {
-  BASE_STYLE, STREET_LEVELS, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx,
+  BASE_STYLE, STREET_LEVELS, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx, ticksVisible,
 } from '../../src/ui/street-paint.js';
 
 // 0 -(main)- 1 -(minor)- 2 -(path)- 3, and an island edge 4-5 nobody reaches.
@@ -71,5 +71,9 @@ describe('isochrone ticks', () => {
     expect(tickHalfPx(0.01)).toBeGreaterThanOrEqual(2);
     expect(tickHalfPx(0.05)).toBeLessThan(tickHalfPx(5));
     expect(tickHalfPx(100)).toBeLessThanOrEqual(7);
+  });
+  it('are hidden at whole-city zoom, where thousands of them would pile up into blobs', () => {
+    expect(ticksVisible(0.05)).toBe(false);
+    expect(ticksVisible(0.4)).toBe(true);
   });
 });
