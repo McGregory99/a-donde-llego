@@ -1,6 +1,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { defineConfig } from 'vite';
+import { cleanStaleAssets, resolveDataFile } from './scripts/vite-helpers.mjs';
 
 const DATA_ROOT = resolve('dist/data');
 
@@ -10,8 +11,8 @@ function serveCityData() {
     name: 'serve-city-data',
     configureServer(server) {
       server.middlewares.use('/data', (request, response, next) => {
-        const file = normalize(join(DATA_ROOT, decodeURIComponent(new URL(request.url, 'http://x').pathname)));
-        if (!file.startsWith(DATA_ROOT) || extname(file) !== '.json' || !existsSync(file) || !statSync(file).isFile()) return next();
+        const file = resolveDataFile(DATA_ROOT, new URL(request.url, 'http://x').pathname);
+        if (!file || extname(file) !== '.json' || !existsSync(file) || !statSync(file).isFile()) return next();
         response.setHeader('Content-Type', 'application/json');
         createReadStream(file).pipe(response);
       });
@@ -19,9 +20,20 @@ function serveCityData() {
   };
 }
 
+/** Build: drop stale hashed assets from earlier builds; emptyOutDir stays off because dist/data lives here. */
+function cleanBuildAssets() {
+  return {
+    name: 'clean-build-assets',
+    apply: 'build',
+    buildStart() {
+      cleanStaleAssets(resolve('dist'));
+    },
+  };
+}
+
 export default defineConfig({
   root: 'web',
-  plugins: [serveCityData()],
+  plugins: [serveCityData(), cleanBuildAssets()],
   server: { fs: { allow: ['..'] } },
   // dist/data holds the pipeline output next to the site, so the build must not wipe it.
   build: { outDir: '../dist', emptyOutDir: false },
