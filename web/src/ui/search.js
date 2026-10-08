@@ -57,6 +57,8 @@ export function createSearch(container, { geocoder, t, onSelect, onError }) {
     note.hidden = !message;
   }
 
+  // An answer for text the user has since changed must not overwrite the current state.
+  const stillCurrent = (query) => input.value.trim() === query;
   const fail = (error) => onError(error?.key ?? 'errors.geocoder');
 
   input.addEventListener('input', async () => {
@@ -67,8 +69,9 @@ export function createSearch(container, { geocoder, t, onSelect, onError }) {
     }
     try {
       const answer = await geocoder.suggest(query);
-      if (answer) show(answer);
+      if (answer && stillCurrent(query)) show(answer);
     } catch (error) {
+      if (!stillCurrent(query)) return;
       clear();
       fail(error);
     }
@@ -80,16 +83,22 @@ export function createSearch(container, { geocoder, t, onSelect, onError }) {
     if (query.length < MIN_CHARS) return;
     try {
       const answer = await geocoder.search(query);
+      if (!answer || !stillCurrent(query)) return;
       if (answer.results.length) choose(answer.results[0]);
       else show(answer);
     } catch (error) {
-      fail(error);
+      if (stillCurrent(query)) fail(error);
     }
   });
 
-  document.addEventListener('click', (event) => {
+  const onDocumentClick = (event) => {
     if (!form.contains(event.target)) clear();
-  });
+  };
+  document.addEventListener('click', onDocumentClick);
 
-  return { input };
+  return {
+    input,
+    /** Removes the document listener (the form itself goes away with its container). */
+    destroy: () => document.removeEventListener('click', onDocumentClick),
+  };
 }

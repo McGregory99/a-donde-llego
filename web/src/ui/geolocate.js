@@ -21,10 +21,15 @@ export function locate(geolocation, isInside) {
       return;
     }
     geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const point = [coords.latitude, coords.longitude];
-        if (isInside(point)) resolve(point);
-        else reject(new LocateError('errors.outsideCity', 'geolocation: outside the covered area'));
+      (position) => {
+        // Throwing inside a browser callback would leave the promise pending forever.
+        try {
+          const point = [position.coords.latitude, position.coords.longitude];
+          if (isInside(point)) resolve(point);
+          else reject(new LocateError('errors.outsideCity', 'geolocation: outside the covered area'));
+        } catch (error) {
+          reject(new LocateError('errors.geolocationUnavailable', `geolocation: ${error?.message ?? error}`));
+        }
       },
       (error) =>
         reject(
