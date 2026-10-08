@@ -19,17 +19,20 @@ export function createGestures() {
   const pair = () => [...pointers.values()];
 
   return {
+    /** Returns a `drag-end` when a second finger interrupts a marker drag, else null. */
     down(id, screen, kind, markers) {
       pointers.set(id, screen);
       if (pointers.size === 2) {
+        const interrupted = gesture?.type === 'drag' ? { type: 'drag-end', key: gesture.key } : null;
         const [a, b] = pair();
         gesture = { type: 'pinch', distance: hypot(a, b) };
-        return;
+        return interrupted;
       }
       const key = markerAt(screen, markers, kind);
       gesture = key
         ? { type: 'drag', key }
         : { type: 'pan', start: screen, last: screen, moved: false, slop: CLICK_SLOP[kind] };
+      return null;
     },
 
     move(id, screen) {
@@ -64,9 +67,12 @@ export function createGestures() {
       return done.moved ? null : { type: 'click', screen };
     },
 
+    /** Returns a `drag-end` when the cancelled pointer was dragging a marker, else null. */
     cancel(id) {
       pointers.delete(id);
+      const dragging = gesture?.type === 'drag' ? { type: 'drag-end', key: gesture.key } : null;
       if (!pointers.size) gesture = null;
+      return dragging;
     },
   };
 }

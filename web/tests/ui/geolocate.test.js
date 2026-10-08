@@ -42,4 +42,17 @@ describe('locate', () => {
     const error = await locate(geolocation, () => false).catch((e) => e);
     expect(error.key).toBe('errors.outsideCity');
   });
+
+  it('rejects instead of hanging when the success callback itself fails', async () => {
+    const geolocation = fake({ coords: { latitude: 41.65, longitude: -4.72 } });
+    const error = await locate(geolocation, () => { throw new Error('boom'); }).catch((e) => e);
+    expect(error).toBeInstanceOf(LocateError);
+    expect(error.key).toBe('errors.geolocationUnavailable');
+  });
+
+  it('treats a position without coordinates as unavailable', async () => {
+    const geolocation = { getCurrentPosition: vi.fn((ok) => ok({})) };
+    const error = await locate(geolocation, inside).catch((e) => e);
+    expect(error.key).toBe('errors.geolocationUnavailable');
+  });
 });
