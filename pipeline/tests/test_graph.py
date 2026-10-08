@@ -211,3 +211,32 @@ def test_mini_gtfs_fixture_builds(make_zip):
     graph = build_graph(read_feed(make_zip("mini_gtfs")), make_city(), today=TODAY)
     assert [s["id"] for s in graph.stops] == ["S1", "S2", "S3", "S4"]
     assert len(graph.lines) == 3 and len(graph.rides) == 3
+
+
+def test_stop_is_not_a_walking_shortcut_without_riding():
+    # A is 900 m from the origin; P is 900 m past A. Walking through A (board, no
+    # ride, egress) must not extend the walking limit.
+    stops = {"A": at(900), "B": at(5000)}
+    graph = build_graph(make_feed(stops, {"L": "3"}, six_an_hour("L", "A", "B", 6)), make_city(HOUR), today=TODAY)
+    (t,) = travel_times(graph, at(0), [at(1800)])
+    assert t is None
+
+
+def test_transfer_without_riding_is_not_a_walking_shortcut():
+    # Ride L1 to B, walk to C (<= 400 m transfer) without riding L2, then egress at C.
+    stops = {"A": at(0), "B": at(3000), "C": at(3300), "D": at(9000)}
+    trips = six_an_hour("L1", "A", "B", 6) + six_an_hour("L2", "C", "D", 6)
+    graph = build_graph(make_feed(stops, {"L1": "3", "L2": "3"}, trips), make_city(HOUR), today=TODAY)
+    (t,) = travel_times(graph, at(0), [at(4200)])  # 1200 m from B, 900 m from C
+    assert t is None
+
+
+@pytest.mark.parametrize("window", [("20:00", "07:00"), ("08:00", "08:00")])
+def test_window_end_must_be_after_start(window):
+    with pytest.raises(GraphError, match="window"):
+        build_graph(one_line(), make_city(window), today=TODAY)
+
+
+def test_explicit_reference_date_without_service_is_an_error():
+    with pytest.raises(GraphError, match="2026-10-10"):  # a Saturday: no service
+        build_graph(one_line(), make_city(HOUR), today=TODAY, reference_date=date(2026, 10, 10))

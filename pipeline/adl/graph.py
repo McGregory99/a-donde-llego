@@ -46,6 +46,7 @@ class Graph:
     walk: dict
     modes: dict[str, dict]
     neighbors: dict[int, list[tuple[int, float]]] = field(default_factory=dict)
+    headways: dict[tuple[int, int], float] = field(default_factory=dict)  # (stop, line) -> minutes
 
 
 def wait_minutes(headway_min: float, params: dict) -> float:
@@ -129,10 +130,14 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
             mode_of_type.setdefault(str(route_type), mode_id)
     window = city["window"]
     start, end = _clock(window["start"]), _clock(window["end"])
+    if end <= start:
+        raise GraphError(f"city window end {window['end']} must be after start {window['start']}")
     window_min = (end - start) / 60.0
 
     ref = reference_date or pick_reference_date(feed, today)
     active = _services_by_date(feed).get(ref, set())
+    if not active:
+        raise GraphError(f"no service on reference date {ref.isoformat()}")
     route_mode = {
         r["route_id"]: mode_of_type[r["route_type"]]
         for r in feed["routes.txt"]
@@ -190,6 +195,11 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
         for (line, sid), count in sorted(departures.items())
     }
 
+    headways = {
+        (stop_index[sid], line_index[line]): round(window_min / count, 2)
+        for (line, sid), count in sorted(departures.items())
+    }
+
     neighbors: dict[int, list[tuple[int, float]]] = {i: [] for i in range(len(stops))}
     reach = walk["max_transfer_walk_m"]
     points = [(s["lat"], s["lon"]) for s in stops]
@@ -198,7 +208,7 @@ def build_graph(feed: Feed, city: dict, *, today: date, reference_date: date | N
             d = distance_m(p, q)
             if i != j and d <= reach:
                 neighbors[i].append((j, walk_minutes(d, walk)))
-    return Graph(ref, stops, lines, waits, rides, dict(walk), transit, neighbors)
+    return Graph(ref, stops, lines, waits, rides, dict(walk), transit, neighbors, headways)
 
 
 def travel_times(
@@ -209,9 +219,12 @@ def travel_times(
 ) -> list[float | None]:
     """Minimum minutes from ``origin`` to each point (None: unreachable).
 
-    Nodes: ``("S", stop)`` walked-to stop where boarding is possible, and
-    ``("R", stop, line)`` on a vehicle. Alighting never feeds back into a
-    boardable stop, so every line change pays ``transfer_min`` (R3.4).
+    Nodes: ``("S", stop)`` walked-to stop where boarding is possible,
+    ``("B", stop, line)`` just boarded (nothing ridden yet) and
+    ``("R", stop, line)`` after at least one ride hop. Only ridden nodes can
+    egress or transfer, so a stop is never a walking shortcut, and alighting
+    never feeds back into a boardable stop: every line change pays
+    ``transfer_min`` (R3.4).
     """
     enabled = set(graph.modes) if enabled_modes is None else enabled_modes
     walk, max_access = graph.walk, graph.walk["max_access_m"]
@@ -244,16 +257,18 @@ def travel_times(
             continue
         if node[0] == "S":
             for line, wait in boards[node[1]]:
-                push(cost + wait, ("R", node[1], line))
+                push(cost + wait, ("B", node[1], line))
             continue
-        _, stop, line = node
+        kind, stop, line = node
         for nxt, minutes in ride_from[(stop, line)]:
             push(cost + minutes, ("R", nxt, line))
+        if kind == "B":
+            continue
         for target, walk_min in [(stop, 0.0), *graph.neighbors[stop]]:
             for other, wait in boards[target]:
                 if other != line:
                     penalty = graph.modes[graph.lines[other]["mode"]]["transfer_min"]
-                    push(cost + penalty + walk_min + wait, ("R", target, other))
+                    push(cost + penalty + walk_min + wait, ("B", target, other))
 
     egress: dict[int, float] = {}
     for (kind, stop, *_), cost in best.items():
