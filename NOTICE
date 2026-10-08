@@ -1,0 +1,46 @@
+a-donde-llego
+Copyright (c) 2026 Goyo Cancio (MIT, see LICENSE)
+
+This product includes software and data from third parties. Their licenses
+and attribution requirements are listed below. The same credits are shown in
+the application (map corner and the "Acerca de" page, web/acerca.html), where
+city-specific data sources come from cities/<city>.json.
+
+1. Reference project: "À portée de tram"
+   Copyright (c) 2026 Camille Roux
+   https://github.com/camilleroux/montpellier-temps-transport
+   Pinned commit 8fb45be2cbaf51be6916107148969f98c441a408
+   License: MIT for code (verbatim in pipeline/upstream/LICENSE and
+   web/upstream/LICENSE; reproduced in LICENSE). Only code and templates are
+   vendored (see UPSTREAM.md). The upstream computed data (ODbL 1.0) is not
+   vendored or redistributed.
+
+2. Transit schedules (GTFS), city of Valladolid
+   Source: AUVASA (Autobuses Urbanos de Valladolid),
+   https://www.auvasa.es/empresa/datos-abiertos/
+   License: Creative Commons Attribution 3.0 Spain (CC BY 3.0 ES),
+   https://creativecommons.org/licenses/by/3.0/es/
+   Required credit: "Fuente: AUVASA". The data is processed at build time into
+   the static files served under data/valladolid/; the feed validity dates and
+   the build date are published in those files and in the application.
+
+3. OpenStreetMap
+   Data (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0,
+   https://www.openstreetmap.org/copyright
+   Used for the vector basemap (water and parks), the municipal boundary
+   (relation 348849) and, where a feed has no shapes.txt, line geometry. No
+   map tile provider is used. Derived databases built from it are published
+   under ODbL.
+
+4. Geocoding services (queried live from the browser, no data is stored)
+   - Photon by Komoot, https://photon.komoot.io, data (c) OpenStreetMap
+     contributors (ODbL).
+   - Nominatim, https://nominatim.openstreetmap.org, data (c) OpenStreetMap
+     contributors (ODbL), subject to the Nominatim usage policy.
+
+5. Build and test dependencies (not redistributed in the built site except
+   where bundled by Vite)
+   - Vite, Vitest, jsdom, Ajv, Playwright: MIT (jsdom, Vite, Vitest, Ajv) and
+     Apache-2.0 (Playwright). See each package's license in node_modules.
+   - Python tooling declared in pyproject.toml (pytest, jsonschema, and
+     their dependencies) is used only to build the data and run tests.

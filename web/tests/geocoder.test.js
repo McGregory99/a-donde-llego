@@ -122,6 +122,41 @@ describe('geocoder debounce (R6.2)', () => {
   });
 });
 
+describe('geocoder stale failures (R6.6)', () => {
+  it('a superseded suggest whose request fails resolves null instead of surfacing the error', async () => {
+    let fail;
+    const { geocoder } = setup((url) =>
+      new URL(url).searchParams.get('q') === 'Calle uno' ? new Promise((_, reject) => (fail = reject)) : reply(collection(inside('B'))),
+    );
+    const slow = geocoder.suggest('Calle uno');
+    await vi.advanceTimersByTimeAsync(300);
+    const fast = geocoder.suggest('Calle dos');
+    await vi.advanceTimersByTimeAsync(300);
+    fail(new Error('network down'));
+    expect(await slow).toBeNull();
+    expect((await fast).results).toHaveLength(1);
+  });
+
+  it('the latest suggest still surfaces its own failure', async () => {
+    const { geocoder } = setup(() => reply({}, 500));
+    const only = geocoder.suggest('Calle uno');
+    const assertion = expect(only).rejects.toMatchObject({ key: 'errors.geocoder' });
+    await vi.advanceTimersByTimeAsync(300);
+    await assertion;
+  });
+});
+
+describe('geocoder request building', () => {
+  it('a missing endpoint raises a typed GeocoderError instead of a TypeError', async () => {
+    const { endpoint, ...rest } = config.geocoder;
+    const geocoder = createGeocoder({ ...config, geocoder: rest }, { fetch: vi.fn() });
+    const error = await geocoder.search('Plaza').catch((e) => e);
+    expect(error).toBeInstanceOf(GeocoderError);
+    expect(error.key).toBe('errors.geocoder');
+    expect(error.message).toMatch(/endpoint/);
+  });
+});
+
 describe('geocoder cache (R6.2)', () => {
   it('repeats of a query (any case or spacing) are served from memory', async () => {
     const { fetch, geocoder } = setup(() => reply(collection(inside('X'))));

@@ -63,6 +63,7 @@ export function createGeocoder(config, options = {}) {
     if (text.length < settings.minChars) return { results: [], outside: 0 };
     const key = text.toLowerCase();
     if (cache.has(key)) return cache.get(key);
+    if (!endpoint) throw new GeocoderError('errors.geocoder', 'geocoder: no endpoint configured for search');
     const payload = await getJson(searcher.buildUrl(endpoint, text, bbox, { limit: settings.limit, lang }));
     let places;
     try {
@@ -95,7 +96,11 @@ export function createGeocoder(config, options = {}) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending = null;
-        search(query).then((value) => resolve(mine === sequence ? value : null), reject);
+        // A superseded search resolves null whether it succeeds or fails: only the latest one may surface.
+        search(query).then(
+          (value) => resolve(mine === sequence ? value : null),
+          (error) => (mine === sequence ? reject(error) : resolve(null)),
+        );
       }, settings.debounceMs);
       pending = { timer, resolve };
     });
