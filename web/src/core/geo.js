@@ -23,6 +23,15 @@ export function streetMinutes(metres, walk) {
   return metres / walk.speed_m_per_min;
 }
 
+/**
+ * Metres a traveller can walk all the way in `minutes`: the bound of a walk-only map by its time scale. Street
+ * metres need no detour factor (see streetMinutes); straight-line ones do (see walkMinutes).
+ */
+export function directWalkLimitM(walk, minutes) {
+  const metres = minutes * walk.speed_m_per_min;
+  return walk.network === 'streets' ? metres : metres / walk.detour_factor;
+}
+
 export const DEFAULT_MAX_SNAP_M = 150;
 
 function inRing(point, ring) {

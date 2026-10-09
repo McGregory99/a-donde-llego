@@ -19,7 +19,7 @@ function expectSame(actual, expected) {
 describe('forward travel times match the Python model', () => {
   cases.forEach((c, n) => {
     it(`case ${n}: origin ${c.origin.map((v) => v.toFixed(3))} modes ${JSON.stringify(c.enabled)}`, () => {
-      expectSame(travelTimes(graph, c.origin, points, { enabled: c.enabled }), c.times);
+      expectSame(travelTimes(graph, c.origin, points, { enabled: c.enabled, directWalkM: c.direct_walk_m }), c.times);
     });
   });
 });

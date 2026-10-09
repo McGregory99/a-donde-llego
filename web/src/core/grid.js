@@ -1,5 +1,5 @@
 // Sampling grid over the city bbox and its travel-time raster (R4.3, R4.8).
-import { stopTimes } from './dijkstra.js';
+import { directLimitOf, stopTimes } from './dijkstra.js';
 import { distanceM, walkMinutes } from './geo.js';
 
 const METRES_PER_DEGREE_LAT = 111_194.9;
@@ -46,16 +46,16 @@ export function forEachCellNear(grid, anchor, radiusM, visit) {
 export function computeGrid(grid, graph, point, options = {}) {
   const { walk } = graph;
   const times = new Float32Array(grid.cols * grid.rows).fill(NaN);
-  const stamp = (anchor, base) =>
-    forEachCellNear(grid, anchor, walk.max_access_m, (index, d) => {
+  const stamp = (anchor, base, radius) =>
+    forEachCellNear(grid, anchor, radius, (index, d) => {
       const minutes = base + walkMinutes(d, walk);
       if (!(times[index] <= minutes)) times[index] = minutes;
     });
 
-  stamp(point, 0);
+  stamp(point, 0, directLimitOf(walk, options.directWalkM));
   const viaStop = stopTimes(graph, point, options);
   graph.stops.forEach((stop, i) => {
-    if (viaStop[i] !== Infinity) stamp([stop.lat, stop.lon], viaStop[i]);
+    if (viaStop[i] !== Infinity) stamp([stop.lat, stop.lon], viaStop[i], walk.max_access_m);
   });
   return times;
 }

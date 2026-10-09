@@ -4,22 +4,30 @@ import { nodeTimes, streetsOf } from '../core/dijkstra.js';
 import { computeGrid } from '../core/grid.js';
 import { itinerary } from '../core/itinerary.js';
 import { isochrones } from '../core/isochrone.js';
-import { streetContours } from '../core/street-contours.js';
+import { directWalkLimitM } from '../core/geo.js';
+import { streetTimeGrid } from '../core/street-grid.js';
 
-const searchOptions = (state) => ({ enabled: state.modes, reverse: state.direction === 'arrival' });
+/** Walk-only: walking all the way is bounded by the time scale; with transit the walking cap stays max_access_m. */
+const searchOptions = (state, walk) => ({
+  enabled: state.modes,
+  reverse: state.direction === 'arrival',
+  directWalkM: state.modes.length ? undefined : directWalkLimitM(walk, state.scale),
+});
 
 /**
  * Straight-line walking: { times, nodes: null, contours } with minutes per grid cell (NaN unreachable) and contour
- * segments per requested isochrone. Walking along streets: { times: null, nodes, contours } with minutes per street
- * node (Infinity unreachable), which the renderer paints on the street segments, and an isochrone front per threshold.
+ * segments per requested isochrone. Walking along streets: { times: null, nodes, cells, contours } with minutes per
+ * street node (Infinity unreachable), which the renderer paints on the street segments, minutes per grid cell derived
+ * from them (`cells`, only to trace contours: no area is painted) and the isochrone lines per threshold.
  */
 export function computeScene(graph, grid, state) {
   const streets = streetsOf(graph);
   if (streets) {
-    const nodes = nodeTimes(graph, state.origin, searchOptions(state));
-    return { times: null, nodes, contours: streetContours(streets, nodes, state.isochrones) };
+    const nodes = nodeTimes(graph, state.origin, searchOptions(state, graph.walk));
+    const cells = streetTimeGrid(grid, streets, nodes, graph.walk);
+    return { times: null, nodes, cells, contours: isochrones(grid, cells, state.isochrones) };
   }
-  const times = computeGrid(grid, graph, state.origin, searchOptions(state));
+  const times = computeGrid(grid, graph, state.origin, searchOptions(state, graph.walk));
   return { times, nodes: null, contours: isochrones(grid, times, state.isochrones) };
 }
 
@@ -29,12 +37,12 @@ export function computeScene(graph, grid, state) {
  */
 export function destinationTrip(graph, state) {
   if (!state.destination) return null;
-  const trip = itinerary(graph, state.origin, state.destination, searchOptions(state));
+  const trip = itinerary(graph, state.origin, state.destination, searchOptions(state, graph.walk));
   if (!trip || trip.total > state.scale) return { reachable: false };
   return { reachable: true, ...trip };
 }
 
 /** Contours of an existing scene for another set of thresholds (the times are not recomputed). */
 export function sceneContours(graph, grid, scene, thresholds) {
-  return scene.nodes ? streetContours(graph.streets, scene.nodes, thresholds) : isochrones(grid, scene.times, thresholds);
+  return isochrones(grid, scene.cells ?? scene.times, thresholds);
 }

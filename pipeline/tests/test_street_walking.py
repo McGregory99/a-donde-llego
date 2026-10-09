@@ -2,7 +2,7 @@
 
 import pytest
 
-from adl.graph import GraphError, build_graph, travel_times
+from adl.graph import GraphError, build_graph, node_times, travel_times
 from adl.walkgraph import build_street_graph
 from test_graph import HOUR, TODAY, at, idx, make_city, make_feed, six_an_hour
 from test_walkgraph import raw_streets
@@ -127,3 +127,33 @@ def test_streets_walk_exports_the_resolved_snap_distance():
     assert graph.walk["max_snap_m"] == 150.0
     custom = build(far, six_an_hour("L", "A", "B", 5), streets_of([(0, 0), (500, 0)]), max_snap_m=80)
     assert custom.walk["max_snap_m"] == 80
+
+
+def test_direct_walk_limit_extends_only_the_walk_all_the_way():
+    far = {"A": at(0, 5000), "B": at(3000, 5000)}
+    avenue = streets_of([(-3000, 0), (0, 0), (3000, 0)])
+    graph = build(far, six_an_hour("L", "A", "B", 5), avenue)  # max_access_m 1000
+    near, distant = at(900, 0), at(2500, 0)
+    assert travel_times(graph, at(0, 0), [near, distant], set()) == [pytest.approx(900 / 75, abs=0.3), None]
+    extended = travel_times(graph, at(0, 0), [near, distant], set(), direct_walk_m=3000)
+    assert extended[1] == pytest.approx(2500 / 75, abs=0.4) and extended[0] == travel_times(graph, at(0, 0), [near], set())[0]
+    assert travel_times(graph, at(0, 0), [distant], set(), direct_walk_m=2000) == [None]
+
+
+def test_direct_walk_limit_applies_to_straight_walking_and_to_node_times():
+    far = {"A": at(0, 5000), "B": at(3000, 5000)}
+    trips = six_an_hour("L", "A", "B", 5)
+    straight = build(far, trips, None, network="straight")
+    (reached,) = travel_times(straight, at(0, 0), [at(2000, 0)], set(), direct_walk_m=3000)
+    assert reached is not None and travel_times(straight, at(0, 0), [at(2000, 0)], set()) == [None]
+    graph = build(far, trips, streets_of([(-3000, 0), (3000, 0)]))
+    reach_default = sum(t is not None for t in node_times(graph, at(0, 0), set()))
+    reach_wide = sum(t is not None for t in node_times(graph, at(0, 0), set(), direct_walk_m=3000))
+    assert reach_wide > reach_default
+
+
+def test_direct_walk_limit_leaves_transit_access_capped():
+    stops = {"A": at(1500, 0), "B": at(3000, 5000)}  # 1500 m from the origin: beyond max_access_m
+    graph = build(stops, six_an_hour("L", "A", "B", 5), streets_of([(-3000, 0), (3000, 0), ], [(3000, 0), (3000, 5000)]))
+    base = travel_times(graph, at(0, 0), [at(3000, 4900)], {"road"})
+    assert travel_times(graph, at(0, 0), [at(3000, 4900)], {"road"}, direct_walk_m=3000) == base

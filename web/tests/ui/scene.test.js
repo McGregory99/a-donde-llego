@@ -32,7 +32,7 @@ describe('computeScene', () => {
 
   it('with every transit mode off only walking reachability remains (R4.7)', () => {
     const all = computeScene(graph, grid, base).times;
-    const walkOnly = computeScene(graph, grid, { ...base, modes: [] }).times;
+    const walkOnly = computeScene(graph, grid, { ...base, modes: [], scale: 10 }).times; // walk-only reach follows the scale
     const reached = (t) => t.filter((v) => !Number.isNaN(v)).length;
     expect(reached(walkOnly)).toBeLessThan(reached(all));
     expect(reached(walkOnly)).toBeGreaterThan(0);

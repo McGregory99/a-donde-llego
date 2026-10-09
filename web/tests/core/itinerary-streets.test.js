@@ -14,7 +14,7 @@ describe('street itinerary totals equal the heat value (R5.3)', () => {
   cases.forEach((c, n) => {
     it(`departure, case ${n}: every point matches the Python model, legs sum to it`, () => {
       points.forEach((p, i) => {
-        const trip = itinerary(graph, c.origin, p, { enabled: c.enabled });
+        const trip = itinerary(graph, c.origin, p, { enabled: c.enabled, directWalkM: c.direct_walk_m });
         if (c.times[i] === null) return expect(trip).toBeNull();
         expect(Math.abs(trip.total - c.times[i])).toBeLessThan(1e-9);
         expect(Math.abs(sum(trip) - c.times[i])).toBeLessThan(1e-6);
@@ -40,7 +40,7 @@ describe('street itinerary totals equal the heat value (R5.3)', () => {
 });
 
 describe('street walk legs', () => {
-  const walkOnly = cases.find((c) => c.enabled?.length === 0 && c.times.filter((t) => t !== null).length > 8);
+  const walkOnly = cases.find((c) => c.enabled?.length === 0 && c.direct_walk_m === undefined && c.times.filter((t) => t !== null).length > 8);
   const reachable = (c) => points.filter((_, i) => c.times[i] !== null);
 
   it('walking only: one walk leg whose minutes are its street metres at walking speed, no detour factor', () => {

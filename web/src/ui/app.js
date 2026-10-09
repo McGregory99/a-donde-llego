@@ -52,7 +52,8 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
       !scene ||
       previous.origin !== state.origin ||
       previous.direction !== state.direction ||
-      previous.modes !== state.modes;
+      previous.modes !== state.modes ||
+      (previous.scale !== state.scale && !state.modes.length); // walk-only reach is bounded by the scale
     if (moved) {
       scene = computeScene(data.graph, grid, state);
       renderer.setContours(scene.contours);

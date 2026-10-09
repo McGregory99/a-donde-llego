@@ -25,6 +25,7 @@ TODAY = date(2026, 10, 7)
 ORIGINS = [at(50), at(3000, 150), at(6000, -500), at(-3600, 4100)]  # last one boards the G-E line
 FLOAT_TOLERANCE = 1e-9
 ENABLED = [None, ["road"], ["rail"], []]
+DIRECT_WALK_M = 2500  # extra walk-only cases: the direct walk bounded by a time scale instead of max_access_m
 
 
 def trips(route: str, stops: list[tuple[str, int]]) -> list:
@@ -67,6 +68,10 @@ def build_golden() -> dict:
         {"origin": list(origin), "enabled": enabled,
          "times": travel_times(graph, origin, points, None if enabled is None else set(enabled))}
         for origin in ORIGINS for enabled in ENABLED
+    ] + [
+        {"origin": list(origin), "enabled": [], "direct_walk_m": DIRECT_WALK_M,
+         "times": travel_times(graph, origin, points, set(), direct_walk_m=DIRECT_WALK_M)}
+        for origin in ORIGINS
     ]
     return {"graph": asset, "points": [list(p) for p in points], "cases": cases}
 
@@ -108,14 +113,14 @@ def test_golden_covers_transfers_and_unreachable_points():
     reached = [t for c in cases if c["enabled"] is None for t in c["times"] if t is not None]
     assert reached and max(reached) > 20
     assert any(t is None for c in cases for t in c["times"])
-    walk_only = next(c for c in cases if c["enabled"] == [] and c["origin"] == list(ORIGINS[0]))
+    walk_only = next(c for c in cases if c["enabled"] == [] and c["origin"] == list(ORIGINS[0]) and "direct_walk_m" not in c)
     assert sum(t is not None for t in walk_only["times"]) < sum(t is not None for t in cases[0]["times"])
 
 
 def test_last_golden_origin_rides_transit_beyond_the_walking_radius():
     golden = build_golden()
     last = next(c for c in golden["cases"] if c["origin"] == list(ORIGINS[3]) and c["enabled"] is None)
-    walk_only = next(c for c in golden["cases"] if c["origin"] == list(ORIGINS[3]) and c["enabled"] == [])
+    walk_only = next(c for c in golden["cases"] if c["origin"] == list(ORIGINS[3]) and c["enabled"] == [] and "direct_walk_m" not in c)
     gained = [i for i, (t, w) in enumerate(zip(last["times"], walk_only["times"])) if t is not None and w is None]
     assert len(gained) >= 3
 
@@ -136,6 +141,7 @@ STREET_STOPS = {
 }
 STREET_ORIGINS = [at(10, 300), at(310, 100), at(3400, 1400), at(1500, 800), at(-3000, 4000)]
 STREET_ENABLED = [None, ["road"], []]
+STREET_DIRECT_WALK_M = 3500
 
 
 def street_city():
@@ -169,6 +175,10 @@ def build_street_golden() -> dict:
         {"origin": list(origin), "enabled": enabled,
          "times": travel_times(graph, origin, points, None if enabled is None else set(enabled))}
         for origin in STREET_ORIGINS for enabled in STREET_ENABLED
+    ] + [
+        {"origin": list(origin), "enabled": [], "direct_walk_m": STREET_DIRECT_WALK_M,
+         "times": travel_times(graph, origin, points, set(), direct_walk_m=STREET_DIRECT_WALK_M)}
+        for origin in STREET_ORIGINS
     ]
     return {"graph": asset, "walk": walk, "points": [list(p) for p in points], "cases": cases}
 
@@ -186,7 +196,7 @@ def test_street_golden_exercises_the_bridge_the_snaps_and_the_walking_limit():
     assert walk["stops"]["node"][4] == -1 and walk["stops"]["node"][5] == -1 and min(walk["stops"]["node"][:4]) >= 0
     assert golden["graph"]["walk"]["network"] == "streets" and golden["graph"]["walk"]["detour_factor"] == 1.3
     assert any(row for row in golden["graph"]["neighbors"])  # B and D are street neighbours
-    walk_only = {tuple(c["origin"]): c["times"] for c in golden["cases"] if c["enabled"] == []}
+    walk_only = {tuple(c["origin"]): c["times"] for c in golden["cases"] if c["enabled"] == [] and "direct_walk_m" not in c}
     west, east = walk_only[tuple(STREET_ORIGINS[0])], walk_only[tuple(STREET_ORIGINS[1])]
     assert sum(t is not None for t in west) > 8 and sum(t is not None for t in east) > 8
     assert walk_only[tuple(STREET_ORIGINS[3])].count(None) == len(golden["points"])  # 200 m off every street
@@ -194,3 +204,11 @@ def test_street_golden_exercises_the_bridge_the_snaps_and_the_walking_limit():
     assert any(t is None for t in west) and any(t is not None for t in west)
     with_transit = next(c for c in golden["cases"] if c["origin"] == list(STREET_ORIGINS[0]) and c["enabled"] is None)
     assert sum(t is not None for t in with_transit["times"]) > sum(t is not None for t in west)
+
+
+def test_golden_has_walk_only_cases_reaching_beyond_max_access():
+    for golden, limit in ((build_golden(), DIRECT_WALK_M), (build_street_golden(), STREET_DIRECT_WALK_M)):
+        extended = [c for c in golden["cases"] if c.get("direct_walk_m") == limit]
+        capped = {tuple(c["origin"]): c["times"] for c in golden["cases"] if c["enabled"] == [] and "direct_walk_m" not in c}
+        assert extended and all(c["enabled"] == [] for c in extended)
+        assert any(sum(t is not None for t in c["times"]) > sum(t is not None for t in capped[tuple(c["origin"])]) for c in extended)

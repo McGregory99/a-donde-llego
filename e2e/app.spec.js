@@ -59,13 +59,13 @@ const canvasColours = (page) =>
   page.evaluate(() => {
     const canvas = document.getElementById('map');
     const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-    const counts = { distinct: new Set(), green: 0, red: 0, grey: 0 };
+    const counts = { distinct: new Set(), green: 0, far: 0, grey: 0 };
     for (let i = 0; i < data.length; i += 4) {
       const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
       if (i % 97 === 0) counts.distinct.add(`${r},${g},${b}`);
-      if (g > r + 40 && g > b + 60) counts.green += 1; // the near end of the ramp
-      else if (r > g + 60 && r > b + 60) counts.red += 1; // the far end
-      else if (Math.abs(r - g) < 6 && Math.abs(g - b) < 12 && r > 150 && r < 200) counts.grey += 1; // neutral streets
+      if (g > r - 30 && g > b + 80) counts.green += 1; // the near end of the ramp: yellow-green
+      else if (b > g + 50 && b > r + 30) counts.far += 1; // the far end: dark violet
+      else if (Math.abs(r - g) < 6 && Math.abs(g - b) < 14 && r > 190 && r < 236) counts.grey += 1; // neutral streets
     }
     return { ...counts, distinct: counts.distinct.size };
   });
@@ -75,7 +75,7 @@ test('paints streets: travel-time colours on the street segments and the neutral
   for (let i = 0; i < 3; i += 1) await page.click('[data-action="zoom-in"]');
   await expect.poll(async () => (await canvasColours(page)).distinct).toBeGreaterThan(3);
   const colours = await canvasColours(page);
-  expect(colours.green).toBeGreaterThan(0); // streets close to the origin are green
+  expect(colours.far).toBeGreaterThan(0); // streets far from the origin are opaque violet ramp colours
   expect(colours.grey).toBeGreaterThan(0); // streets beyond the scale keep the base style
 });
 
@@ -203,7 +203,7 @@ test('"Solo a pie" and back changes the reachable trip and persists in the URL',
   await walkOnly.check();
   await expect(walkOnly).toBeChecked();
   await expect.poll(() => page.url()).toMatch(/modes=&/);
-  await expect(page.locator('.trip-panel li')).toHaveCount(0); // too far to walk
+  await expect(page.locator('.trip-panel li')).toHaveCount(1); // the stop is now reachable on foot (bounded by the scale): a single walk leg
   await expect(page.locator('.legend')).toContainText('a pie');
 
   const shared = page.url();
@@ -292,3 +292,24 @@ test('mobile: the map fills the screen, the stats start collapsed and nothing ov
   await page.getByRole('button', { name: 'Ver cifras' }).click();
   await expect(page.locator('.stats')).toBeVisible();
 });
+
+// Contours are closed lines drawn at every zoom (no zoom threshold), in both travel modes. The label is canvas text, so
+// the observable effect of a toggle is a change of the canvas pixels. Walking alone is bounded by the time scale (max=90),
+// not by max_access_m, so its 15, 30 and 45 min fronts are three different lines; with the bus the 45 min one is in reach.
+for (const [name, query, minutes] of [
+  ['Autobús + a pie', `${CITY}&${ORIGIN}&iso=60&max=90`, 45],
+  ['Solo a pie', `${CITY}&${ORIGIN}&modes=&iso=60&max=90`, 15],
+  ['Solo a pie', `${CITY}&${ORIGIN}&modes=&iso=60&max=90`, 30],
+  ['Solo a pie', `${CITY}&${ORIGIN}&modes=&iso=60&max=90`, 45],
+]) {
+  test(`"${name}": toggling the ${minutes} min isochrone changes the map at the default zoom`, async ({ page }) => {
+    await open(page, query);
+    const snapshot = () => page.locator('#map').screenshot();
+    const before = await snapshot();
+    await page.locator(`input[data-iso="${minutes}"]`).check();
+    await expect.poll(async () => !(await snapshot()).equals(before)).toBe(true);
+    const during = await snapshot();
+    await page.locator(`input[data-iso="${minutes}"]`).uncheck();
+    await expect.poll(async () => !(await snapshot()).equals(during)).toBe(true);
+  });
+}

@@ -11,7 +11,7 @@
 //   { type: 'ride',     minutes, line, from, to, stops: [stop indices, boarding to alighting] }
 //   { type: 'transfer', minutes, walkMinutes, penaltyMinutes, fromStop, toStop }
 // `stop` / `line` are indices into graph.stops / graph.lines.
-import { maxSnapOf, searchStops, streetsOf } from './dijkstra.js';
+import { directLimitOf, maxSnapOf, searchStops, streetsOf } from './dijkstra.js';
 import { distanceM, streetMinutes, walkMinutes } from './geo.js';
 import { nearestNode, pathAlong, reach, routeNodes } from './streets.js';
 
@@ -111,20 +111,20 @@ function stopRoute(graph, streets, from, to) {
  * or riding to a stop and walking on. One search from the point's snapped node covers both (street
  * distances are symmetric). Returns { best, via, point: {snap, found}, anchor: {snap} } or null.
  */
-function streetBest(graph, streets, anchor, point, out) {
+function streetBest(graph, streets, anchor, point, out, directM) {
   const { walk } = graph;
   const maxSnap = maxSnapOf(walk);
   const snapP = nearestNode(streets, point, maxSnap);
   const snapA = nearestNode(streets, anchor, maxSnap);
   if (!snapP) return null;
-  const found = reach(streets, snapP.node, walk.max_access_m);
+  const found = reach(streets, snapP.node, directM);
   let best = Infinity;
   let via = -1;
   found.nodes.forEach((node, k) => {
     const d = found.dist[k];
-    if (snapA && snapA.metres <= walk.max_access_m && node === snapA.node && d <= walk.max_access_m - snapA.metres) {
+    if (snapA && snapA.metres <= directM && node === snapA.node && d <= directM - snapA.metres) {
       const metres = snapA.metres + d + snapP.metres;
-      if (metres <= walk.max_access_m && streetMinutes(metres, walk) < best) best = streetMinutes(metres, walk);
+      if (metres <= directM && streetMinutes(metres, walk) < best) best = streetMinutes(metres, walk);
     }
     for (const stop of streets.stopsAt.get(node) ?? []) {
       const snapS = streets.stopSnap[stop];
@@ -142,10 +142,10 @@ function streetBest(graph, streets, anchor, point, out) {
 }
 
 /** Street walk between a free point and a stop (or another point): { minutes, metres, path } or null for zero length. */
-function streetLeg(graph, streets, free, other) {
+function streetLeg(graph, streets, free, other, limitM) {
   // `free` = { point, snap }, `other` = { node, snapM, point }; the route runs from the first to the second.
   const { walk } = graph;
-  const found = reach(streets, free.snap.node, walk.max_access_m);
+  const found = reach(streets, free.snap.node, limitM);
   const route = routeNodes(found, other.node);
   const metres = free.snap.metres + found.dist[found.nodes.indexOf(other.node)] + other.snapM;
   if (metres === 0) return null;
@@ -155,9 +155,10 @@ function streetLeg(graph, streets, free, other) {
 const reversePath = (leg) => (leg ? { ...leg, path: [...leg.path].reverse() } : leg);
 
 /** Street itinerary: same shape as the straight one, walk legs carry metres and the street polyline. */
-function streetItinerary(graph, streets, anchor, point, { enabled, reverse }) {
+function streetItinerary(graph, streets, anchor, point, { enabled, reverse, directWalkM }) {
   const { out, trace } = searchStops(graph, anchor, { enabled, reverse, trace: true });
-  const result = streetBest(graph, streets, anchor, point, out);
+  const directM = directLimitOf(graph.walk, directWalkM);
+  const result = streetBest(graph, streets, anchor, point, out, directM);
   if (!result) return null;
   const { best, via, snapP, snapA } = result;
   const start = reverse ? point : anchor;
@@ -167,11 +168,11 @@ function streetItinerary(graph, streets, anchor, point, { enabled, reverse }) {
   const walkLeg = (from, to, leg) => (leg ? [{ type: 'walk', minutes: leg.minutes, metres: leg.metres, path: leg.path, from, to }] : []);
   // The anchor side is walked from the anchor's snap (anchor -> stop), the point side from the point's snap
   // (point <-> stop); this is the arithmetic of the search and of travelTimes, so totals agree to the bit.
-  const anchorLeg = (stop) => streetLeg(graph, streets, { point: anchor, snap: snapA }, stopEnd(stop));
-  const pointLeg = (stop) => streetLeg(graph, streets, { point, snap: snapP }, stopEnd(stop));
+  const anchorLeg = (stop) => streetLeg(graph, streets, { point: anchor, snap: snapA }, stopEnd(stop), graph.walk.max_access_m);
+  const pointLeg = (stop) => streetLeg(graph, streets, { point, snap: snapP }, stopEnd(stop), graph.walk.max_access_m);
 
   if (via === -1) {
-    const leg = streetLeg(graph, streets, { point: anchor, snap: snapA }, { node: snapP.node, snapM: snapP.metres, point });
+    const leg = streetLeg(graph, streets, { point: anchor, snap: snapA }, { node: snapP.node, snapM: snapP.metres, point }, directM);
     const legs = walkLeg(at(null, start), at(null, end), reverse ? reversePath(leg) : leg);
     return { total: best, legs, path: pathOf(graph, start, legs, end) };
   }
@@ -194,11 +195,12 @@ function streetItinerary(graph, streets, anchor, point, { enabled, reverse }) {
  * Itinerary behind the heat-map value at `point`, or null when it is unreachable.
  * Departure (default): `anchor` is the departure, the trip runs anchor -> point.
  * Arrival (`reverse`): `anchor` is the chosen destination, the trip runs point -> anchor.
+ * `directWalkM` raises the cap on walking all the way above max_access_m, as in travelTimes.
  * Returns { total, legs, path } with legs in travel order.
  */
-export function itinerary(graph, anchor, point, { enabled = null, reverse = false } = {}) {
+export function itinerary(graph, anchor, point, { enabled = null, reverse = false, directWalkM } = {}) {
   const streets = streetsOf(graph);
-  if (streets) return streetItinerary(graph, streets, anchor, point, { enabled, reverse });
+  if (streets) return streetItinerary(graph, streets, anchor, point, { enabled, reverse, directWalkM });
   const { out, trace } = searchStops(graph, anchor, { enabled, reverse, trace: true });
   const { walk } = graph;
   const start = reverse ? point : anchor;
@@ -207,7 +209,7 @@ export function itinerary(graph, anchor, point, { enabled = null, reverse = fals
   let best = Infinity;
   let via = -1;
   const direct = distanceM(anchor, point);
-  if (direct <= walk.max_access_m) best = walkMinutes(direct, walk);
+  if (direct <= directLimitOf(walk, directWalkM)) best = walkMinutes(direct, walk);
   graph.stops.forEach((s, i) => {
     if (out[i] === Infinity) return;
     const d = distanceM([s.lat, s.lon], point);

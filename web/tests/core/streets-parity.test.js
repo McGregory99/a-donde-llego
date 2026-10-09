@@ -13,7 +13,7 @@ const EPS = 1e-6;
 describe('street travel times match the Python model', () => {
   cases.forEach((c, n) => {
     it(`case ${n}: origin ${c.origin.map((v) => v.toFixed(4))} modes ${JSON.stringify(c.enabled)}`, () => {
-      const actual = travelTimes(graph, c.origin, points, { enabled: c.enabled });
+      const actual = travelTimes(graph, c.origin, points, { enabled: c.enabled, directWalkM: c.direct_walk_m });
       expect(actual).toHaveLength(c.times.length);
       actual.forEach((value, i) => {
         if (c.times[i] === null) expect(value).toBeNull();
@@ -33,7 +33,7 @@ describe('nodeTimes: the time painted on every street node', () => {
   const nodePoints = Array.from({ length: walk.n }, (_, i) => [walk.lat[i], walk.lon[i]]);
   cases.forEach((c, n) => {
     it(`case ${n}: equals travelTimes evaluated at the node itself`, () => {
-      const options = { enabled: c.enabled };
+      const options = { enabled: c.enabled, directWalkM: c.direct_walk_m };
       const times = nodeTimes(graph, c.origin, options);
       const expected = travelTimes(graph, c.origin, nodePoints, options);
       expect(times).toHaveLength(walk.n);

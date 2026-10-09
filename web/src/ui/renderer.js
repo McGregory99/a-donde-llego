@@ -3,31 +3,28 @@
 import { labelSpot } from './contours.js';
 import { pointInPolygons } from '../core/geo.js';
 import { stopsVisible } from './stops.js';
-import { BASE_STYLE, bucketColor, edgeBuckets, pathsVisible, streetWidth, tickHalfPx, ticksVisible } from './street-paint.js';
+import { BASE_STYLE, CASING_COLOR, CASING_PX, bucketColor, coloredStreetWidth, edgeBuckets, pathsVisible, streetWidth } from './street-paint.js';
 import { layerCovers, layerFor, layerOffset } from './layer-cache.js';
 import { boundsOf, toScreen } from './view.js';
 
 export const COLORS = {
-  background: '#f1efe9',
-  land: '#e4e2dc',
-  water: '#bcd7e8',
-  park: 'rgba(120, 180, 90, 0.18)',
+  background: '#f7f6f2',
+  land: '#efeee9',
+  water: '#c3dbe9',
+  park: 'rgba(125, 178, 100, 0.2)',
   boundary: 'rgba(255, 255, 255, 0.9)',
   contour: '#111111',
   halo: 'rgba(255, 255, 255, 0.92)',
   origin: '#3aa70b',
   destination: '#111111',
   trip: '#1d4ed8',
+  line: '#4a4a4a', // every transit route, one neutral colour: the heat ramp is the only colour on the map
+  stop: '#333333',
 };
+const LINE_ALPHA = 0.55;
+const LINE_PX = 1.2;
 const HEAT_ALPHA = 0.78;
 const FIT_MARGIN_M = 1500; // around the outermost stops in the initial view
-
-/** Stable pastel-dark colour per line, so neighbouring lines stay distinguishable without city data. */
-export function lineColor(key) {
-  let hash = 0;
-  for (const char of String(key)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return `hsl(${hash % 360} 55% 38%)`;
-}
 
 /** Appends edge `e` of the street graph to `path` as a world polyline: lower node, shape points, higher node. */
 function addEdge(path, walk, world, e) {
@@ -50,21 +47,6 @@ function streetPaths(walk, toWorld) {
   const classes = [new Path2D(), new Path2D(), new Path2D()];
   for (let e = 0; e < walk.edges; e += 1) addEdge(classes[walk.edgeCls[e]] ?? classes[1], walk, world, e);
   return { world, classes };
-}
-
-const tickOf = (a, b) => {
-  const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, dx: (b[0] - a[0]) / length, dy: (b[1] - a[1]) / length };
-};
-
-/** Path of ticks centred on their points, `half` world metres either side. */
-function tickPath(ticks, half) {
-  const path = new Path2D();
-  for (const { x, y, dx, dy } of ticks) {
-    path.moveTo(x - dx * half, y - dy * half);
-    path.lineTo(x + dx * half, y + dy * half);
-  }
-  return path;
 }
 
 const addRing = (path, ring, toWorld) => {
@@ -105,7 +87,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       if (i) path.lineTo(x, y);
       else path.moveTo(x, y);
     });
-    return { color: lineColor(line.id.split(':')[0]), path };
+    return { path };
   });
   const stops = graph.stops.map((stop) => toWorld([stop.lat, stop.lon]));
 
@@ -176,10 +158,17 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     });
     target.setLineDash([]);
     if (layers.streetTimes) {
-      layers.streetTimes.forEach((paths, cls) => {
+      // Every casing first (so a crossing street never covers a neighbour's colour), then the opaque colours.
+      target.strokeStyle = CASING_COLOR;
+      layers.streetTimes.forEach(({ all }, cls) => {
         if (cls === 0 && !pathsVisible(view.scale)) return;
-        target.lineWidth = streetWidth(cls, view.scale) * px;
-        paths.forEach(({ color, path }) => {
+        target.lineWidth = (coloredStreetWidth(cls, view.scale) + 2 * CASING_PX) * px;
+        target.stroke(all);
+      });
+      layers.streetTimes.forEach(({ buckets }, cls) => {
+        if (cls === 0 && !pathsVisible(view.scale)) return;
+        target.lineWidth = coloredStreetWidth(cls, view.scale) * px;
+        buckets.forEach(({ color, path }) => {
           target.strokeStyle = color;
           target.stroke(path);
         });
@@ -216,9 +205,8 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     const px = 1 / view.scale;
     const avoid = markers.map(({ point }) => toScreen(view, size, toWorld(point)));
     const labels = [];
-    for (const { minutes, path: fixedPath, segments, ticks } of layers.contours) {
-      if (!segments.length || (ticks && !ticksVisible(view.scale))) continue;
-      const path = ticks ? tickPath(ticks, tickHalfPx(view.scale) * px) : fixedPath;
+    for (const { minutes, path, segments } of layers.contours) {
+      if (!segments.length) continue;
       worldTransform(view, size, size.dpr);
       ctx.save();
       ctx.clip(land, 'evenodd');
@@ -263,16 +251,21 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       if (!walk) return;
       const buckets = edgeBuckets(walk, times, maxMinutes);
       const grouped = [0, 1, 2].map(() => new Map());
+      const all = [0, 1, 2].map(() => new Path2D()); // every coloured edge of a class, for its casing
       for (let e = 0; e < walk.edges; e += 1) {
         const bucket = buckets[e];
         if (bucket < 0) continue;
         const byBucket = grouped[walk.edgeCls[e]] ?? grouped[1];
         let entry = byBucket.get(bucket);
-        if (!entry) byBucket.set(bucket, (entry = { color: bucketColor(bucket, maxMinutes), path: new Path2D() }));
+        if (!entry) byBucket.set(bucket, (entry = { color: bucketColor(bucket), path: new Path2D() }));
         addEdge(entry.path, walk, streetBase.world, e);
+        addEdge(all[walk.edgeCls[e]] ?? all[1], walk, streetBase.world, e);
       }
       layer.valid = null; // the off-screen street layer shows the old times
-      layers.streetTimes = grouped.map((byBucket) => [...byBucket.entries()].sort((a, b) => a[0] - b[0]).map(([, entry]) => entry));
+      layers.streetTimes = grouped.map((byBucket, cls) => ({
+        all: all[cls],
+        buckets: [...byBucket.entries()].sort((a, b) => a[0] - b[0]).map(([, entry]) => entry),
+      }));
     },
 
     /** Contour segments per threshold, as returned by isochrones(): { [minutes]: [[[lat, lon], [lat, lon]], ...] }. */
@@ -285,9 +278,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
             path.moveTo(a[0], a[1]);
             path.lineTo(b[0], b[1]);
           }
-          // On streets a front is a tick across each crossing street: drawn a fixed few pixels long, whatever the zoom.
-          const ticks = walk ? worldSegments.map(([a, b]) => tickOf(a, b)) : null;
-          return { minutes: Number(minutes), path, segments: worldSegments, ticks };
+          return { minutes: Number(minutes), path, segments: worldSegments };
         })
         .sort((a, b) => a.minutes - b.minutes);
     },
@@ -328,12 +319,10 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
 
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.globalAlpha = walk ? 0.6 : 0.8;
-      for (const line of lines) {
-        ctx.strokeStyle = line.color;
-        ctx.lineWidth = (walk ? 1.6 : 2) * px;
-        ctx.stroke(line.path);
-      }
+      ctx.globalAlpha = LINE_ALPHA;
+      ctx.strokeStyle = COLORS.line;
+      ctx.lineWidth = LINE_PX * px;
+      for (const line of lines) ctx.stroke(line.path);
       ctx.globalAlpha = 1;
 
       const labels = drawContours(view, size, markers);
@@ -351,7 +340,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (stopsVisible(view)) {
-        ctx.fillStyle = 'rgba(40, 40, 40, 0.8)';
+        ctx.fillStyle = COLORS.stop;
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
         for (const world of stops) {

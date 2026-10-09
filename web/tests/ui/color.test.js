@@ -1,16 +1,23 @@
 // R4.3: green -> red colour ramp; beyond the scale the colour fades out.
 import { describe, expect, it } from 'vitest';
 import { BEYOND_FADE, heatColor, legendGradient, paletteColor } from '../../src/ui/color.js';
+import { RAMP } from '../../src/ui/ramps.js';
+
+const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const stops = RAMP.stops;
+const first = rgbOf(stops[0][1]);
+const last = rgbOf(stops.at(-1)[1]);
 
 describe('paletteColor', () => {
-  it('runs green at 0 to red at 1 through yellow', () => {
-    expect(paletteColor(0)).toEqual([47, 150, 18]);
-    expect(paletteColor(0.5)).toEqual([226, 228, 120]);
-    expect(paletteColor(1)).toEqual([226, 120, 120]);
+  it('follows the active ramp from its first to its last stop', () => {
+    expect(paletteColor(0)).toEqual(first);
+    expect(paletteColor(1)).toEqual(last);
+    expect(paletteColor(stops[2][0])).toEqual(rgbOf(stops[2][1]));
   });
 
   it('interpolates between stops', () => {
-    expect(paletteColor(0.125)).toEqual([87, 175, 49]);
+    const mid = (stops[0][0] + stops[1][0]) / 2;
+    expect(paletteColor(mid)).toEqual(rgbOf(stops[0][1]).map((c, i) => Math.round((c + rgbOf(stops[1][1])[i]) / 2)));
   });
 
   it('clamps outside [0, 1]', () => {
@@ -21,8 +28,8 @@ describe('paletteColor', () => {
 
 describe('heatColor', () => {
   it('is opaque within the scale and uses the ramp position minutes / max', () => {
-    expect(heatColor(0, 45)).toEqual([47, 150, 18, 255]);
-    expect(heatColor(45, 45)).toEqual([226, 120, 120, 255]);
+    expect(heatColor(0, 45)).toEqual([...first, 255]);
+    expect(heatColor(45, 45)).toEqual([...last, 255]);
     expect(heatColor(15, 30)).toEqual([...paletteColor(0.5), 255]);
   });
 
@@ -44,7 +51,7 @@ describe('legendGradient', () => {
   it('is a CSS linear gradient over the same stops as the map', () => {
     const css = legendGradient();
     expect(css).toMatch(/^linear-gradient\(90deg, /);
-    expect(css).toContain('rgb(47, 150, 18) 0%');
-    expect(css).toContain('rgb(226, 120, 120) 100%');
+    expect(css).toContain(`rgb(${first.join(', ')}) 0%`);
+    expect(css).toContain(`rgb(${last.join(', ')}) 100%`);
   });
 });

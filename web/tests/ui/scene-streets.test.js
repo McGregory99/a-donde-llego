@@ -1,4 +1,4 @@
-// Scene in streets mode: times live on street nodes (no raster), contours are fronts across streets.
+// Scene in streets mode: times live on street nodes (no raster), contours are closed lines traced on a raster derived from the node times.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createGrid } from '../../src/core/grid.js';
@@ -9,7 +9,7 @@ import { computeScene, destinationTrip, sceneContours } from '../../src/ui/scene
 const golden = JSON.parse(readFileSync(new URL('../golden/travel_times_streets.json', import.meta.url), 'utf8'));
 const graph = { ...golden.graph, streets: decodeWalk(golden.walk) };
 const bbox = [-4.74, 41.58, -4.6, 41.62];
-const grid = createGrid(bbox, 400);
+const grid = createGrid(bbox, 100);
 const city = cityDefaults({
   id: 'x', bbox, center: [41.6, -4.7],
   modes: { foot: { kind: 'walk' }, road: { kind: 'transit' }, rail: { kind: 'transit' } },
@@ -27,6 +27,12 @@ describe('computeScene in streets mode', () => {
     expect(scene.nodes.some((t) => t === Infinity)).toBe(true);
   });
 
+  it('derives a cell raster from the node times to trace the contours', () => {
+    expect(scene.cells).toHaveLength(grid.cols * grid.rows);
+    expect(scene.cells.some(Number.isFinite)).toBe(true);
+    expect(sceneContours(graph, grid, scene, [15])[15].length).toBeGreaterThan(0);
+  });
+
   it('has fronts for the requested isochrones only', () => {
     expect(Object.keys(scene.contours)).toEqual(['5', '15']);
     expect(scene.contours[5].length).toBeGreaterThan(0);
@@ -35,7 +41,7 @@ describe('computeScene in streets mode', () => {
 
   it('walking only reaches fewer nodes than walking plus transit', () => {
     const reached = (s) => Array.from(s.nodes).filter(Number.isFinite).length;
-    expect(reached(computeScene(graph, grid, { ...base, modes: [] }))).toBeLessThan(reached(scene));
+    expect(reached(computeScene(graph, grid, { ...base, modes: [], scale: 10 }))).toBeLessThan(reached(scene));
   });
 });
 
