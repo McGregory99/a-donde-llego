@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createGrid } from '../../src/core/grid.js';
 import { cityDefaults, defaultState } from '../../src/state-url.js';
-import { computeScene, destinationTrip } from '../../src/ui/scene.js';
+import { completeScene, computeScene, destinationTrip } from '../../src/ui/scene.js';
 
 const { graph, cases } = JSON.parse(readFileSync(new URL('../golden/travel_times.json', import.meta.url), 'utf8'));
 const bbox = [-4.74, 41.58, -4.6, 41.62];
@@ -82,4 +82,13 @@ describe('destinationTrip', () => {
 
 describe('golden origins are in the fixture', () => {
   it('has cases to draw on', () => expect(cases.length).toBeGreaterThan(0));
+});
+
+describe('a draft scene (origin drag) and its completion', () => {
+  it('keeps the times but traces no contours until completed', () => {
+    const draft = computeScene(graph, grid, base, { contours: false });
+    expect(draft.times).toEqual(computeScene(graph, grid, base).times);
+    expect(draft.contours).toEqual({});
+    expect(completeScene(graph, grid, base, draft)).toEqual(computeScene(graph, grid, base));
+  });
 });

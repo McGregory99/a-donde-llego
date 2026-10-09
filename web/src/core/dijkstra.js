@@ -191,6 +191,36 @@ export function stopTimes(graph, point, options = {}) {
   return searchStops(graph, point, { ...options, trace: false }).out;
 }
 
+const walksByStreets = new WeakMap();
+
+/**
+ * Street nodes walkable from every stop within max_access_m, computed once per street graph (it never depends on the
+ * origin, and the search from ~600 stops is what made every origin move expensive). Stop `s` owns the slots
+ * start[s]..start[s+1] of `nodes` and `metres` (street metres walked, the stop's snap included).
+ */
+export function stopWalksOf(graph, streets) {
+  const limit = graph.walk.max_access_m;
+  const cached = walksByStreets.get(streets);
+  if (cached?.limit === limit && cached.stops === graph.stops.length) return cached;
+  const start = new Int32Array(graph.stops.length + 1);
+  const nodes = [];
+  const metres = [];
+  graph.stops.forEach((_, stop) => {
+    const snap = streets.stopSnap[stop];
+    if (streets.stopNode[stop] >= 0 && snap <= limit) {
+      const found = reach(streets, streets.stopNode[stop], limit - snap);
+      found.nodes.forEach((node, k) => {
+        nodes.push(node);
+        metres.push(snap + found.dist[k]);
+      });
+    }
+    start[stop + 1] = nodes.length;
+  });
+  const walks = { limit, stops: graph.stops.length, start, nodes: Int32Array.from(nodes), metres: Float64Array.from(metres) };
+  walksByStreets.set(streets, walks);
+  return walks;
+}
+
 /**
  * Calls `visit(node, metres, base, limit)` for every street node a traveller can walk to from `origin` (base 0,
  * up to `directM` metres) or from a stop reached after `base` minutes (up to max_access_m), with `metres` walked
@@ -200,10 +230,10 @@ function forEachStreetWalk(graph, streets, origin, viaStop, directM, visit) {
   const { walk } = graph;
   const walked = streetWalk(streets, nearestNode(streets, origin, maxSnapOf(walk)), directM);
   if (walked) walked.nodes.forEach((node, k) => visit(node, walked.metres[k], 0, directM));
+  const { start, nodes, metres } = stopWalksOf(graph, streets);
   graph.stops.forEach((_, stop) => {
-    if (viaStop[stop] === Infinity || streets.stopNode[stop] < 0) return;
-    const from = streetWalk(streets, { node: streets.stopNode[stop], metres: streets.stopSnap[stop] }, walk.max_access_m);
-    if (from) from.nodes.forEach((node, k) => visit(node, from.metres[k], viaStop[stop], walk.max_access_m));
+    if (viaStop[stop] === Infinity) return;
+    for (let k = start[stop]; k < start[stop + 1]; k += 1) visit(nodes[k], metres[k], viaStop[stop], walk.max_access_m);
   });
 }
 

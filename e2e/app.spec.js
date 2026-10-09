@@ -93,6 +93,65 @@ test('streets are painted as lines, not as an area fill', async ({ page }) => {
   expect(share).toBeLessThan(0.25); // a raster fill would colour most of the walkable disc; streets leave gaps
 });
 
+// Dragging draws cheaper drafts (no contours, no street casing); once released the map must be the very frame a
+// fresh load of the resulting link paints.
+test('after dragging the origin the canvas equals a fresh render of the same link', async ({ page, browser }) => {
+  await open(page);
+  const box = await page.locator('#map').boundingBox();
+  const grab = await page.evaluate(() => {
+    const canvas = document.getElementById('map');
+    const rect = canvas.getBoundingClientRect();
+    for (let y = 4; y < rect.height; y += 4) {
+      for (let x = 4; x < rect.width; x += 4) {
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + x, clientY: rect.top + y, pointerId: 7, pointerType: 'mouse', bubbles: true }));
+        if (canvas.classList.contains('over-marker')) return { x: rect.left + x, y: rect.top + y };
+      }
+    }
+    return null;
+  });
+  expect(grab).not.toBeNull();
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i += 1) await page.mouse.move(grab.x + 4 * i, grab.y + 3 * i);
+  await page.mouse.up();
+  await expect.poll(() => page.url()).toContain('o=');
+  await page.mouse.move(box.x + 5, box.y + 5); // park the pointer away from any hover state
+  const paint = (target) => target.evaluate(() => document.getElementById('map').toDataURL());
+  const dragged = await paint(page);
+
+  const context = await browser.newContext();
+  const fresh = await context.newPage();
+  await fresh.goto(page.url());
+  await expect(fresh.locator('.stats [data-stat="stops"]')).toHaveText('4');
+  await fresh.waitForTimeout(1500);
+  // The link rounds the origin to 5 decimals, so a handful of anti-aliased pixels may move; a draft left on screen
+  // (no contour lines, no street outlines) would change thousands.
+  const diff = await fresh.evaluate(async (other) => {
+    const canvas = document.getElementById('map');
+    const pixels = async (src) => {
+      const image = await new Promise((resolve) => Object.assign(new Image(), { onload() { resolve(this); }, src }));
+      const copy = document.createElement('canvas');
+      copy.width = image.width;
+      copy.height = image.height;
+      const context = copy.getContext('2d');
+      context.drawImage(image, 0, 0);
+      return context.getImageData(0, 0, copy.width, copy.height).data;
+    };
+    const [a, b] = [await pixels(other), await pixels(canvas.toDataURL())];
+    let changed = 0;
+    let strong = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      const d = Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+      if (d) changed += 1;
+      if (d > 60) strong += 1;
+    }
+    return { changed: changed / (a.length / 4), strong };
+  }, dragged);
+  expect(diff.changed).toBeLessThan(0.005);
+  expect(diff.strong).toBeLessThan(100);
+  await context.close();
+});
+
 test('clicking the map shows an itinerary and records the destination in the URL', async ({ page }) => {
   await open(page);
   await clickStop(page);

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createGrid } from '../../src/core/grid.js';
 import { decodeWalk } from '../../src/core/streets.js';
 import { cityDefaults, defaultState } from '../../src/state-url.js';
-import { computeScene, destinationTrip, sceneContours } from '../../src/ui/scene.js';
+import { completeScene, computeScene, destinationTrip, sceneContours } from '../../src/ui/scene.js';
 
 const golden = JSON.parse(readFileSync(new URL('../golden/travel_times_streets.json', import.meta.url), 'utf8'));
 const graph = { ...golden.graph, streets: decodeWalk(golden.walk) };
@@ -60,5 +60,24 @@ describe('sceneContours', () => {
     const fronts = sceneContours(graph, grid, scene, [5, 10]);
     expect(Object.keys(fronts)).toEqual(['5', '10']);
     expect(fronts[5]).toEqual(scene.contours[5]);
+  });
+});
+
+describe('a draft scene (origin drag) and its completion', () => {
+  it('skips the raster and the contours: only the times that paint the streets', () => {
+    const draft = computeScene(graph, grid, base, { contours: false });
+    expect(draft.nodes).toEqual(computeScene(graph, grid, base).nodes);
+    expect(draft.cells).toBeNull();
+    expect(draft.contours).toEqual({});
+  });
+
+  it('completeScene yields exactly the full scene', () => {
+    const draft = computeScene(graph, grid, base, { contours: false });
+    expect(completeScene(graph, grid, base, draft)).toEqual(computeScene(graph, grid, base));
+  });
+
+  it('completing an already full scene returns it untouched', () => {
+    const full = computeScene(graph, grid, base);
+    expect(completeScene(graph, grid, base, full)).toBe(full);
   });
 });
