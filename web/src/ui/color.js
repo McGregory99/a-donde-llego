@@ -1,8 +1,8 @@
 // Colour ramp of the heat map: near -> far along the active ramp (ramps.js), fading out beyond the scale (raster only).
-import { ACTIVE_RAMP, hexToRgb } from './ramps.js';
+import { RAMP, hexToRgb } from './ramps.js';
 
 // [position in 0..1, [r, g, b]] of the active ramp (ramps.js).
-export const PALETTE = ACTIVE_RAMP.stops.map(([position, hex]) => [position, hexToRgb(hex)]);
+export const PALETTE = RAMP.stops.map(([position, hex]) => [position, hexToRgb(hex)]);
 
 /** Share of the scale over which the colour fades out beyond its maximum. */
 export const BEYOND_FADE = 0.15;

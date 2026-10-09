@@ -1,10 +1,10 @@
 // R4.3: green -> red colour ramp; beyond the scale the colour fades out.
 import { describe, expect, it } from 'vitest';
 import { BEYOND_FADE, heatColor, legendGradient, paletteColor } from '../../src/ui/color.js';
-import { RAMPS, DEFAULT_RAMP } from '../../src/ui/ramps.js';
+import { RAMP } from '../../src/ui/ramps.js';
 
 const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-const stops = RAMPS[DEFAULT_RAMP].stops;
+const stops = RAMP.stops;
 const first = rgbOf(stops[0][1]);
 const last = rgbOf(stops.at(-1)[1]);
 
