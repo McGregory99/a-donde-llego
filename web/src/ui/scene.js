@@ -4,9 +4,15 @@ import { nodeTimes, streetsOf } from '../core/dijkstra.js';
 import { computeGrid } from '../core/grid.js';
 import { itinerary } from '../core/itinerary.js';
 import { isochrones } from '../core/isochrone.js';
+import { directWalkLimitM } from '../core/geo.js';
 import { streetTimeGrid } from '../core/street-grid.js';
 
-const searchOptions = (state) => ({ enabled: state.modes, reverse: state.direction === 'arrival' });
+/** Walk-only: walking all the way is bounded by the time scale; with transit the walking cap stays max_access_m. */
+const searchOptions = (state, walk) => ({
+  enabled: state.modes,
+  reverse: state.direction === 'arrival',
+  directWalkM: state.modes.length ? undefined : directWalkLimitM(walk, state.scale),
+});
 
 /**
  * Straight-line walking: { times, nodes: null, contours } with minutes per grid cell (NaN unreachable) and contour
@@ -17,11 +23,11 @@ const searchOptions = (state) => ({ enabled: state.modes, reverse: state.directi
 export function computeScene(graph, grid, state) {
   const streets = streetsOf(graph);
   if (streets) {
-    const nodes = nodeTimes(graph, state.origin, searchOptions(state));
+    const nodes = nodeTimes(graph, state.origin, searchOptions(state, graph.walk));
     const cells = streetTimeGrid(grid, streets, nodes, graph.walk);
     return { times: null, nodes, cells, contours: isochrones(grid, cells, state.isochrones) };
   }
-  const times = computeGrid(grid, graph, state.origin, searchOptions(state));
+  const times = computeGrid(grid, graph, state.origin, searchOptions(state, graph.walk));
   return { times, nodes: null, contours: isochrones(grid, times, state.isochrones) };
 }
 
@@ -31,7 +37,7 @@ export function computeScene(graph, grid, state) {
  */
 export function destinationTrip(graph, state) {
   if (!state.destination) return null;
-  const trip = itinerary(graph, state.origin, state.destination, searchOptions(state));
+  const trip = itinerary(graph, state.origin, state.destination, searchOptions(state, graph.walk));
   if (!trip || trip.total > state.scale) return { reachable: false };
   return { reachable: true, ...trip };
 }

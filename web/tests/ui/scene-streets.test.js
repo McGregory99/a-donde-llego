@@ -41,7 +41,7 @@ describe('computeScene in streets mode', () => {
 
   it('walking only reaches fewer nodes than walking plus transit', () => {
     const reached = (s) => Array.from(s.nodes).filter(Number.isFinite).length;
-    expect(reached(computeScene(graph, grid, { ...base, modes: [] }))).toBeLessThan(reached(scene));
+    expect(reached(computeScene(graph, grid, { ...base, modes: [], scale: 10 }))).toBeLessThan(reached(scene));
   });
 });
 

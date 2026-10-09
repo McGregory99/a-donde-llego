@@ -19,7 +19,7 @@ describe('itinerary total equals the heat-map value (R5.3)', () => {
       let reached = 0;
       const expectedReached = c.times.filter((t) => t !== null).length;
       points.forEach((p, i) => {
-        const result = itinerary(graph, c.origin, p, { enabled: c.enabled });
+        const result = itinerary(graph, c.origin, p, { enabled: c.enabled, directWalkM: c.direct_walk_m });
         if (c.times[i] === null) return expect(result).toBeNull();
         reached += 1;
         expect(Math.abs(result.total - c.times[i])).toBeLessThan(EPS);
