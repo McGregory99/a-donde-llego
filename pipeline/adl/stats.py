@@ -9,12 +9,15 @@ and nothing else defines the served area without a boundary).
 When walking follows streets ("streets" scope) the map paints street segments, so the headline share
 (``percent_nodes``) is taken over street nodes (inside the boundary when there is one) whose
 ``node_times`` is within the threshold; ``percent_stops`` stays as the stop-based figure. Headway: window length /
-departures per (stop, line); each line takes the median over its stops, then the headline is the median
-across lines (a line counts once, however many stops it has) and the best (smallest) line. Pure; no clock.
+departures per (stop, line); each line takes the median over its stops. The headline (``typical_min``) is the
+departure-weighted median of those line headways: each line weighs its departures in the window (proportional to
+1 / headway), so a line that runs every 10 min counts as much as 78 lines that run every 780 min, and the figure is the
+interval a typical departure, not a typical line id, sees. ``best_min`` is the smallest line headway. Pure; no clock.
 """
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import defaultdict
 from datetime import date
@@ -32,6 +35,25 @@ class StatsError(Exception):
 def _median(values: list[float]) -> float | None:
     """Median rounded to 0.1, or None when there is nothing to measure."""
     return round(statistics.median(values), 1) if values else None
+
+
+def _weighted_median(pairs: list[tuple[float, float]]) -> float | None:
+    """Median of ``value`` with ``weight`` each, rounded to 0.1; None when empty.
+
+    When the cumulative weight reaches exactly half between two values, their midpoint is taken (as a plain median does).
+    """
+    if not pairs:
+        return None
+    ordered = sorted(pairs)
+    half = sum(w for _, w in ordered) / 2
+    cumulative = 0.0
+    for i, (value, weight) in enumerate(ordered):
+        cumulative += weight
+        if math.isclose(cumulative, half) and i + 1 < len(ordered):
+            return round((value + ordered[i + 1][0]) / 2, 1)
+        if cumulative > half:
+            return round(value, 1)
+    return round(ordered[-1][0], 1)
 
 
 def _best(values: list[float]) -> float | None:
@@ -98,7 +120,7 @@ def compute_stats(
             **({"percent_nodes": node_share} if node_share is not None else {}),
         },
         "headway": {
-            "median_by_line_min": _median(list(line_medians.values())),
+            "typical_min": _weighted_median([(m, 1 / m) for m in line_medians.values()]),
             "best_min": _best(list(line_medians.values())),
             "by_line": [{"id": graph.lines[i]["id"], "median_min": m} for i, m in sorted(line_medians.items())],
         },

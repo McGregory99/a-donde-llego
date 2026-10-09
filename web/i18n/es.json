@@ -98,7 +98,7 @@
       "served": "Porcentaje de las paradas de la red a las que se llega en {minutes} min o menos, saliendo del centro de la ciudad en un día laborable típico."
     },
     "reachOrigins": "Es el promedio de {count} puntos de salida de referencia.",
-    "headwayDefinition": "Cada línea cuenta una sola vez, con el intervalo habitual entre salidas en sus paradas durante la franja horaria de referencia; el dato es la mediana de todas las líneas.",
+    "headwayDefinition": "Para cada línea se toma el intervalo habitual entre salidas en sus paradas durante la franja horaria de referencia. El dato es la mediana de esos intervalos ponderada por el número de salidas de cada línea: una línea con servicio frecuente pesa más que otra que sale unas pocas veces al día, de modo que refleja la salida típica y no la línea típica.",
     "bestHeadwayDefinition": "Intervalo habitual entre salidas de la línea con más servicio en esa misma franja.",
     "expired": "Datos de horarios caducados: el feed dejó de ser válido el {date}. Los tiempos pueden no reflejar el servicio actual."
   },

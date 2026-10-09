@@ -36,7 +36,7 @@ export function isUsableStats(stats) {
     isNumber(reach && reachValue(reach)) &&
     isNumber(reach?.origins) &&
     SCOPES.includes(reach?.scope) &&
-    isNumber(headway?.median_by_line_min) &&
+    isNumber(headway?.typical_min) &&
     isNumber(headway?.best_min) &&
     typeof feed?.valid_from === 'string' &&
     typeof feed?.valid_to === 'string'
@@ -57,7 +57,7 @@ export function renderStats(container, stats, t = defaultT) {
       t(reach.scope === 'streets' ? 'stats.reachStreets' : 'stats.reach', { minutes: reach.threshold_min }),
       t('stats.percent', { value: number.format(reachValue(reach)) }),
     ],
-    ['headway', t('stats.headway'), t('stats.minutes', { value: number.format(headway.median_by_line_min) })],
+    ['headway', t('stats.headway'), t('stats.minutes', { value: number.format(headway.typical_min) })],
     ['bestHeadway', t('stats.bestHeadway'), t('stats.minutes', { value: number.format(headway.best_min) })],
     ['stops', t('stats.stops'), number.format(stats.stops)],
     ['lines', t('stats.lines'), number.format(stats.lines)],

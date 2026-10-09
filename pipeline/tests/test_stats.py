@@ -43,22 +43,44 @@ def test_threshold_and_multiple_origins_average():
     assert result["reach"]["percent_stops"] == 50.0  # 50% from each origin
 
 
-def test_headway_is_median_per_line_then_median_across_lines():
+def test_headway_is_departure_weighted_median_of_line_headways():
     result = stats()["headway"]
-    assert result["median_by_line_min"] == 10.0
+    assert result["typical_min"] == 10.0
     assert result["best_min"] == 10.0
     assert {l["id"]: l["median_min"] for l in result["by_line"]} == {"L1:0": 10.0, "L2:0": 10.0}
-    assert "overall_median_min" not in result
+    assert "median_by_line_min" not in result and "overall_median_min" not in result
 
 
-def test_a_line_counts_once_however_many_stops_it_has():
-    # line 0 has 3 stop pairs at 10 min, line 1 has 2 at 60 min: pairs would give 10, lines give 35.
+def test_low_service_lines_do_not_dominate_the_typical_headway():
+    # Three frequent lines (every 10 min) against five that run a few times a day (every 600 min):
+    # the plain median across lines would be 600; a typical departure belongs to a frequent line.
+    graph = toy_graph()
+    graph.lines[:] = [{"id": f"X{i}:0", "route_id": f"X{i}", "direction": 0, "mode": "bus"} for i in range(8)]
+    graph.headways.clear()
+    graph.headways.update({(0, 0): 10.0, (1, 1): 10.0, (2, 2): 10.0})
+    graph.headways.update({(3, line): 600.0 for line in range(3, 8)})
+    result = stats(graph)["headway"]
+    assert result["typical_min"] == 10.0
+    assert result["best_min"] == 10.0
+
+
+def test_a_line_weighs_by_its_departures_not_by_its_stops():
+    # line 0 has 3 stop pairs at 10 min, line 1 has 2 at 60 min; line 0 departs 6x as often.
     graph = toy_graph()
     graph.headways.clear()
     graph.headways.update({(0, 0): 10.0, (1, 0): 10.0, (2, 0): 10.0, (3, 1): 60.0, (4, 1): 60.0})
     result = stats(graph)["headway"]
-    assert result["median_by_line_min"] == 35.0
+    assert result["typical_min"] == 10.0
     assert result["best_min"] == 10.0
+
+
+def test_weighted_median_splits_evenly_balanced_departures():
+    # Equal weight on both sides of the middle takes the midpoint, like a plain median.
+    from adl.stats import _weighted_median
+
+    assert _weighted_median([(10.0, 1.0), (20.0, 1.0)]) == 15.0
+    assert _weighted_median([(10.0, 3.0), (60.0, 1.0)]) == 10.0
+    assert _weighted_median([]) is None
 
 
 def test_counts_and_feed_validity_and_build_date_are_recorded():
