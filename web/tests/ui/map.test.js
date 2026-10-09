@@ -21,7 +21,7 @@ function setup({ width, height, stops = [], markers: extra = [] }) {
     Object.assign(event, { pointerId: init.pointerId ?? 1, pointerType: init.pointerType ?? 'touch' });
     canvas.dispatchEvent(event);
   };
-  return { map, handlers, fire, canvas };
+  return { map, handlers, fire, canvas, renderer };
 }
 
 beforeEach(() => {
@@ -53,6 +53,54 @@ describe('createMap interrupted drags', () => {
     fire('pointerup', { clientX: 20, clientY: 20, pointerId: 2 });
     fire('pointerup', { clientX: 230, clientY: 160, pointerId: 1 });
     expect(handlers.onDragEnd).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createMap origin drag pacing', () => {
+  // Frames only run when the test says so: the browser delivers more pointermoves than frames.
+  let frames;
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal('requestAnimationFrame', (callback) => frames.push(callback));
+  });
+  const runFrame = () => frames.splice(0).forEach((callback) => callback());
+  const grab = (fire) => {
+    fire('pointerdown', { clientX: 200, clientY: 150, pointerId: 1 });
+    runFrame();
+  };
+
+  it('computes the dragged position once per frame, with the latest pointer position', () => {
+    const { fire, handlers } = setup({ width: 400, height: 300 });
+    grab(fire);
+    for (const x of [210, 220, 230]) fire('pointermove', { clientX: x, clientY: 150, pointerId: 1 });
+    expect(handlers.onDrag).not.toHaveBeenCalled();
+    runFrame();
+    expect(handlers.onDrag).toHaveBeenCalledTimes(1);
+    const [, point] = handlers.onDrag.mock.calls[0];
+    fire('pointermove', { clientX: 230, clientY: 150, pointerId: 1 });
+    runFrame();
+    expect(handlers.onDrag.mock.calls[1][1]).toEqual(point);
+  });
+
+  it('drops no position when the pointer is released before the next frame', () => {
+    const { fire, handlers } = setup({ width: 400, height: 300 });
+    grab(fire);
+    fire('pointermove', { clientX: 260, clientY: 150, pointerId: 1 });
+    fire('pointerup', { clientX: 260, clientY: 150, pointerId: 1 });
+    expect(handlers.onDrag).toHaveBeenCalledTimes(1);
+    expect(handlers.onDragEnd).toHaveBeenCalledTimes(1);
+    expect(handlers.onDrag.mock.invocationCallOrder[0]).toBeLessThan(handlers.onDragEnd.mock.invocationCallOrder[0]);
+  });
+
+  it('draws once per frame even when the drag handler asks for a render', () => {
+    const { fire, handlers, renderer, map } = setup({ width: 400, height: 300 });
+    handlers.onDrag.mockImplementation(() => map.requestRender());
+    grab(fire);
+    renderer.draw.mockClear();
+    fire('pointermove', { clientX: 240, clientY: 150, pointerId: 1 });
+    runFrame();
+    expect(renderer.draw).toHaveBeenCalledTimes(1);
+    expect(frames).toHaveLength(0);
   });
 });
 

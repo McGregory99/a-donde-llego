@@ -8,7 +8,7 @@ import { legendModel, renderLegend } from './legend.js';
 import { buildLayout } from './layout.js';
 import { createMap } from './map.js';
 import { createRenderer, COLORS } from './renderer.js';
-import { computeScene, destinationTrip, sceneContours } from './scene.js';
+import { completeScene, computeScene, destinationTrip, sceneContours } from './scene.js';
 import { reduce } from './state.js';
 import { bindDismiss } from './dismiss.js';
 import { createToast } from './toast.js';
@@ -41,9 +41,10 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
 
   const renderer = createRenderer(layout.canvas, { data, projection, bbox: config.bbox, graph: data.graph });
 
-  function paintHeat(upsample) {
-    if (scene.nodes) renderer.setStreetTimes(scene.nodes, state.scale);
-    else renderer.setHeat(heatPixels(scene.times, grid.cols, grid.rows, state.scale, upsample));
+  /** Paints the travel times; `draft` (the origin is being dragged) trades detail for speed until the drag ends. */
+  function paintHeat({ draft = false } = {}) {
+    if (scene.nodes) renderer.setStreetTimes(scene.nodes, state.scale, { draft });
+    else renderer.setHeat(heatPixels(scene.times, grid.cols, grid.rows, state.scale, draft ? HEAT_UPSAMPLE.drag : HEAT_UPSAMPLE.full));
   }
 
   /** Recomputes only what `previous` -> `state` invalidated. */
@@ -55,15 +56,16 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
       previous.modes !== state.modes ||
       (previous.scale !== state.scale && !state.modes.length); // walk-only reach is bounded by the scale
     if (moved) {
-      scene = computeScene(data.graph, grid, state);
+      scene = computeScene(data.graph, grid, state, { contours: !fast }); // a moving origin skips the contours
       renderer.setContours(scene.contours);
-      paintHeat(fast ? HEAT_UPSAMPLE.drag : HEAT_UPSAMPLE.full);
+      paintHeat({ draft: fast });
     } else {
       if (previous.isochrones !== state.isochrones) {
+        scene = completeScene(data.graph, grid, state, scene);
         scene = { ...scene, contours: sceneContours(data.graph, grid, scene, state.isochrones) };
         renderer.setContours(scene.contours);
       }
-      if (previous.scale !== state.scale) paintHeat(HEAT_UPSAMPLE.full);
+      if (previous.scale !== state.scale) paintHeat();
     }
     trip = destinationTrip(data.graph, state);
     renderer.setTrip(trip?.reachable ? trip.path : null);
@@ -122,7 +124,9 @@ export function createApp({ config, data, root, search = '', t = defaultT, histo
         if (key === 'origin' && inCity(point)) dispatch({ type: 'origin', point }, { quiet: true, fast: true });
       },
       onDragEnd: () => {
-        paintHeat(HEAT_UPSAMPLE.full);
+        scene = completeScene(data.graph, grid, state, scene);
+        renderer.setContours(scene.contours);
+        paintHeat();
         syncUrl();
         emit();
       },

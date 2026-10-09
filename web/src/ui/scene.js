@@ -19,16 +19,30 @@ const searchOptions = (state, walk) => ({
  * segments per requested isochrone. Walking along streets: { times: null, nodes, cells, contours } with minutes per
  * street node (Infinity unreachable), which the renderer paints on the street segments, minutes per grid cell derived
  * from them (`cells`, only to trace contours: no area is painted) and the isochrone lines per threshold.
+ *
+ * `contours: false` returns a draft for a moving origin: the same times, but no cells and no contours (`draft: true`),
+ * which is most of the cost of a streets scene. `completeScene` finishes it once the origin rests.
  */
-export function computeScene(graph, grid, state) {
+export function computeScene(graph, grid, state, { contours = true } = {}) {
   const streets = streetsOf(graph);
   if (streets) {
     const nodes = nodeTimes(graph, state.origin, searchOptions(state, graph.walk));
+    if (!contours) return { times: null, nodes, cells: null, contours: {}, draft: true };
     const cells = streetTimeGrid(grid, streets, nodes, graph.walk);
     return { times: null, nodes, cells, contours: isochrones(grid, cells, state.isochrones) };
   }
   const times = computeGrid(grid, graph, state.origin, searchOptions(state, graph.walk));
+  if (!contours) return { times, nodes: null, contours: {}, draft: true };
   return { times, nodes: null, contours: isochrones(grid, times, state.isochrones) };
+}
+
+/** The full scene of a draft (`computeScene(..., { contours: false })`); a scene that is already full is returned as is. */
+export function completeScene(graph, grid, state, scene) {
+  if (!scene.draft) return scene;
+  const streets = streetsOf(graph);
+  const cells = streets ? streetTimeGrid(grid, streets, scene.nodes, graph.walk) : undefined;
+  const { draft, ...rest } = scene;
+  return { ...rest, ...(streets ? { cells } : {}), contours: isochrones(grid, cells ?? scene.times, state.isochrones) };
 }
 
 /**

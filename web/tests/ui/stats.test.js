@@ -7,7 +7,7 @@ import { formatDate, renderExpiryBanner, renderStats } from '../../src/ui/stats.
 const stats = (overrides = {}) => ({
   built_on: '2026-10-07',
   feed: { expired: false, valid_from: '2026-10-07', valid_to: '2026-12-27' },
-  headway: { median_by_line_min: 24, best_min: 8, by_line: [] },
+  headway: { typical_min: 24, best_min: 8, by_line: [] },
   lines: 58,
   reach: { origins: 1, percent_stops: 61.2, scope: 'boundary', threshold_min: 30 },
   stops: 566,
@@ -92,7 +92,7 @@ describe('renderStats with missing or malformed stats', () => {
     ['non-numeric percentage', { reach: { origins: 1, percent_stops: '61', scope: 'boundary', threshold_min: 30 } }],
     ['no headway block', { headway: undefined }],
     ['legacy headway without the new fields', { headway: { overall_median_min: 52, by_line: [] } }],
-    ['NaN headway', { headway: { median_by_line_min: NaN, best_min: 8, by_line: [] } }],
+    ['NaN headway', { headway: { typical_min: NaN, best_min: 8, by_line: [] } }],
     ['no feed', { feed: undefined }],
     ['feed without dates', { feed: { expired: false } }],
     ['unknown reach scope', { reach: { origins: 1, percent_stops: 61, scope: 'moon', threshold_min: 30 } }],

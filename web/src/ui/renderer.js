@@ -92,7 +92,7 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
   const stops = graph.stops.map((stop) => toWorld([stop.lat, stop.lon]));
 
   const layers = { heat: null, contours: [], trip: null, streetTimes: null };
-  const layer = { canvas: null, valid: null };
+  const layer = { base: { canvas: null, valid: null }, timed: { canvas: null, valid: null } };
   const walk = graph.walk?.network === 'streets' ? graph.streets : null;
   const streetBase = walk ? streetPaths(walk, toWorld) : null;
 
@@ -141,14 +141,19 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     ctx.fillText(label, left + width / 2, y - 30.5);
   }
 
-  /** Streets in the neutral style, then every edge with a travel time over it in its colour. */
-  function paintStreets(target, view, size) {
-    const px = 1 / view.scale;
+  /** Sets `target` up to paint streets in world metres, clipped to the city boundary like the heat was. */
+  function streetsPen(target, view, size) {
     worldTransform(view, size, size.dpr, target);
     target.save();
-    target.clip(land, 'evenodd'); // streets are only drawn inside the city boundary, like the heat was
+    target.clip(land, 'evenodd');
     target.lineCap = 'round';
     target.lineJoin = 'round';
+  }
+
+  /** Every street in the neutral style. Static: it only changes with the view, never with the travel times. */
+  function paintBaseStreets(target, view, size) {
+    const px = 1 / view.scale;
+    streetsPen(target, view, size);
     BASE_STYLE.forEach((style, cls) => {
       if (cls === 0 && !pathsVisible(view.scale)) return;
       target.strokeStyle = style.color;
@@ -156,48 +161,60 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
       target.setLineDash(style.dash ? [4 * px, 3 * px] : []);
       target.stroke(streetBase.classes[cls]);
     });
-    target.setLineDash([]);
-    if (layers.streetTimes) {
-      // Every casing first (so a crossing street never covers a neighbour's colour), then the opaque colours.
-      target.strokeStyle = CASING_COLOR;
-      layers.streetTimes.forEach(({ all }, cls) => {
-        if (cls === 0 && !pathsVisible(view.scale)) return;
-        target.lineWidth = (coloredStreetWidth(cls, view.scale) + 2 * CASING_PX) * px;
-        target.stroke(all);
-      });
-      layers.streetTimes.forEach(({ buckets }, cls) => {
-        if (cls === 0 && !pathsVisible(view.scale)) return;
-        target.lineWidth = coloredStreetWidth(cls, view.scale) * px;
-        buckets.forEach(({ color, path }) => {
-          target.strokeStyle = color;
-          target.stroke(path);
-        });
-      });
-    }
     target.restore();
   }
 
-  // Painting every segment takes tens of milliseconds, so the streets go through an off-screen layer a bit larger
-  // than the viewport: panning copies its pixels at an integer offset (layer-cache.js) and only a zoom, a new
-  // travel-time set or a pan beyond the margin repaints it. Too big a canvas (huge screens): paint directly.
-  function drawStreets(view, size) {
-    if (!layer.canvas || !layer.valid || !layerCovers(layer.valid, view, size)) {
+  /** Every edge with a travel time over it, in its colour, on top of whatever is below. */
+  function paintTimedStreets(target, view, size) {
+    const px = 1 / view.scale;
+    streetsPen(target, view, size);
+    // Every casing first (so a crossing street never covers a neighbour's colour), then the opaque colours.
+    // A draft (origin being dragged) has no casing: it is half of the painting cost and comes back on release.
+    target.strokeStyle = CASING_COLOR;
+    layers.streetTimes.forEach(({ all }, cls) => {
+      if (!all || (cls === 0 && !pathsVisible(view.scale))) return;
+      target.lineWidth = (coloredStreetWidth(cls, view.scale) + 2 * CASING_PX) * px;
+      target.stroke(all);
+    });
+    layers.streetTimes.forEach(({ buckets }, cls) => {
+      if (cls === 0 && !pathsVisible(view.scale)) return;
+      target.lineWidth = coloredStreetWidth(cls, view.scale) * px;
+      buckets.forEach(({ color, path }) => {
+        target.strokeStyle = color;
+        target.stroke(path);
+      });
+    });
+    target.restore();
+  }
+
+  // Painting every segment takes tens of milliseconds, so the streets go through off-screen layers a bit larger
+  // than the viewport: panning copies their pixels at an integer offset (layer-cache.js) and only a zoom or a pan
+  // beyond the margin repaints them. There are two, because they change at different times: the neutral base is
+  // static, the travel-time colours are repainted on every origin move (a drag then pays only for those).
+  // Too big a canvas (huge screens): paint directly.
+  function drawLayer(slot, paint, view, size) {
+    if (!slot.canvas || !slot.valid || !layerCovers(slot.valid, view, size)) {
       const next = layerFor(view, size);
-      layer.valid = null;
+      slot.valid = null;
       if (!next) {
-        paintStreets(ctx, view, size);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        paint(ctx, view, size);
         return;
       }
-      layer.canvas ??= document.createElement('canvas');
-      layer.canvas.width = next.pxWidth;
-      layer.canvas.height = next.pxHeight;
-      const target = layer.canvas.getContext('2d');
-      paintStreets(target, view, { width: next.pxWidth / next.dpr, height: next.pxHeight / next.dpr, dpr: next.dpr });
-      layer.valid = next;
+      slot.canvas ??= document.createElement('canvas');
+      slot.canvas.width = next.pxWidth; // also clears it
+      slot.canvas.height = next.pxHeight;
+      paint(slot.canvas.getContext('2d'), view, { width: next.pxWidth / next.dpr, height: next.pxHeight / next.dpr, dpr: next.dpr });
+      slot.valid = next;
     }
-    const { x, y } = layerOffset(layer.valid, view, size);
+    const { x, y } = layerOffset(slot.valid, view, size);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(layer.canvas, x, y);
+    ctx.drawImage(slot.canvas, x, y);
+  }
+
+  function drawStreets(view, size) {
+    drawLayer(layer.base, paintBaseStreets, view, size);
+    if (layers.streetTimes) drawLayer(layer.timed, paintTimedStreets, view, size);
     worldTransform(view, size, size.dpr); // the layers drawn after the streets paint in world metres
   }
 
@@ -246,12 +263,13 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
     /**
      * Street travel times: `times` = minutes per street node (Infinity unreachable), `maxMinutes` the colour scale.
      * Edges are grouped by road class and colour bucket so a frame costs a few dozen strokes, not one per edge.
+     * `draft` (an origin being dragged) leaves out the casing outlines to keep frames cheap.
      */
-    setStreetTimes(times, maxMinutes) {
+    setStreetTimes(times, maxMinutes, { draft = false } = {}) {
       if (!walk) return;
       const buckets = edgeBuckets(walk, times, maxMinutes);
       const grouped = [0, 1, 2].map(() => new Map());
-      const all = [0, 1, 2].map(() => new Path2D()); // every coloured edge of a class, for its casing
+      const all = [0, 1, 2].map(() => (draft ? null : new Path2D())); // every coloured edge of a class, for its casing
       for (let e = 0; e < walk.edges; e += 1) {
         const bucket = buckets[e];
         if (bucket < 0) continue;
@@ -259,9 +277,9 @@ export function createRenderer(canvas, { data, projection, bbox, graph }) {
         let entry = byBucket.get(bucket);
         if (!entry) byBucket.set(bucket, (entry = { color: bucketColor(bucket), path: new Path2D() }));
         addEdge(entry.path, walk, streetBase.world, e);
-        addEdge(all[walk.edgeCls[e]] ?? all[1], walk, streetBase.world, e);
+        if (!draft) addEdge(all[walk.edgeCls[e]] ?? all[1], walk, streetBase.world, e);
       }
-      layer.valid = null; // the off-screen street layer shows the old times
+      layer.timed.valid = null; // the off-screen layer shows the old times
       layers.streetTimes = grouped.map((byBucket, cls) => ({
         all: all[cls],
         buckets: [...byBucket.entries()].sort((a, b) => a[0] - b[0]).map(([, entry]) => entry),

@@ -44,8 +44,23 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
     else focusStop(null);
   };
 
+  // A marker drag is applied once per frame, from the latest pointer position: the browser can deliver more
+  // pointermoves than frames, and every applied position recomputes the travel times.
+  let pendingDrag = null;
+  const applyDrag = () => {
+    if (!pendingDrag) return;
+    const { key, screen } = pendingDrag;
+    pendingDrag = null;
+    handlers.onDrag(key, latLonAt(screen));
+  };
+
   function render() {
-    queued = false;
+    queued = true; // renders requested while applying the drag are this very frame
+    try {
+      applyDrag();
+    } finally {
+      queued = false;
+    }
     if (view) renderer.draw(view, size, getMarkers(), { contourLabel });
   }
   const requestRender = () => {
@@ -66,7 +81,9 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
   }
 
   const endDrag = (action) => {
-    if (action?.type === 'drag-end') handlers.onDragEnd(action.key);
+    if (action?.type !== 'drag-end') return;
+    applyDrag(); // the last position counts even when no frame ran since it
+    handlers.onDragEnd(action.key);
   };
 
   // The view stays null until the canvas has a size; input before that is ignored.
@@ -94,7 +111,8 @@ export function createMap({ canvas, renderer, projection, getMarkers, contourLab
       view = zoomAt(view, size, action.factor, ...action.center);
       requestRender();
     } else if (action.type === 'drag') {
-      handlers.onDrag(action.key, latLonAt(action.screen));
+      pendingDrag = { key: action.key, screen: action.screen };
+      requestRender();
     }
   });
 
